@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   adbSideload,
+  flashImage,
   generateFlashPlan,
   inspectPartitions,
   type BootLayout,
   type FlashPlan,
+  type FlashPlanStep,
   type PartitionMetadata,
   type ProcessOutputEvent,
   type SlotStrategy,
@@ -62,12 +64,16 @@ function FlashPlanPanel({
   const [busy, setBusy] = useState(false);
   const [probing, setProbing] = useState(false);
   const [sideloadBusy, setSideloadBusy] = useState(false);
+  const [flashConfirmation, setFlashConfirmation] = useState("");
+  const [flashingPartition, setFlashingPartition] = useState<string | null>(null);
 
   const isZip = Boolean(romPath?.toLowerCase().endsWith(".zip"));
 
   useEffect(() => {
     setPlan(null);
     setPartitionInfo([]);
+    setFlashConfirmation("");
+    setFlashingPartition(null);
     if (bootLayout !== "ab") setSlotStrategy("active");
   }, [romPath, bootLayout, activeSlot, serial]);
 
@@ -76,9 +82,18 @@ function FlashPlanPanel({
     let unlisten: (() => void) | undefined;
 
     void listen<ProcessOutputEvent>("flashrom-process-output", (event) => {
-      if (event.payload.operationId !== "adb-sideload") return;
+      const operationId = event.payload.operationId;
       const data = event.payload.data.replace(/\r/g, "\n").trim();
-      if (data) onLog(`[ADB ${event.payload.stream}] ${data}`);
+      if (!data) return;
+
+      if (operationId === "adb-sideload") {
+        onLog(`[ADB ${event.payload.stream}] ${data}`);
+        return;
+      }
+
+      if (operationId.startsWith("fastboot-flash-")) {
+        onLog(`[FASTBOOT ${event.payload.stream}] ${data}`);
+      }
     }).then((stop) => {
       if (disposed) stop();
       else unlisten = stop;
@@ -101,11 +116,32 @@ function FlashPlanPanel({
     );
   }, [plan]);
 
+  const validatedTargets = useMemo(() => {
+    const targets = new Map<
+      string,
+      { logical: boolean; sizeBytes: number; recommendedMode: string }
+    >();
+
+    for (const partition of partitionInfo) {
+      for (const target of partition.targets) {
+        if (target.logical === null || target.sizeBytes === null) continue;
+        targets.set(target.name, {
+          logical: target.logical,
+          sizeBytes: target.sizeBytes,
+          recommendedMode: target.recommendedMode,
+        });
+      }
+    }
+
+    return targets;
+  }, [partitionInfo]);
+
   async function buildPlan() {
     if (!romPath || busy) return;
 
     setBusy(true);
     setPartitionInfo([]);
+    setFlashConfirmation("");
     try {
       const result = await generateFlashPlan({
         path: romPath,
@@ -131,6 +167,7 @@ function FlashPlanPanel({
     if (!serial || probeTargets.length === 0 || probing) return;
 
     setProbing(true);
+    setFlashConfirmation("");
     try {
       const result = await inspectPartitions(serial, probeTargets);
       setPartitionInfo(result);
@@ -163,6 +200,40 @@ function FlashPlanPanel({
     }
   }
 
+  async function flashResolvedStep(step: FlashPlanStep) {
+    if (
+      !serial ||
+      step.state !== "resolved" ||
+      !validatedTargets.has(step.partition) ||
+      flashConfirmation !== "FLASH" ||
+      flashingPartition !== null
+    ) {
+      return;
+    }
+
+    setFlashingPartition(step.partition);
+    try {
+      onLog(`Preparing guarded flash: ${step.image} -> ${step.partition}`);
+      const result = await flashImage({
+        serial,
+        partition: step.partition,
+        imagePath: step.imagePath,
+        confirmation: flashConfirmation,
+      });
+      onLog(`$ ${result.command}`);
+      onLog(
+        result.success
+          ? `Flashed ${result.partition} successfully (${formatBytes(result.imageSize)} / ${formatBytes(result.partitionSize)}).`
+          : `Flash failed with exit code ${result.status}.`,
+      );
+      if (result.success) setFlashConfirmation("");
+    } catch (error) {
+      onLog(`Flash blocked/failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setFlashingPartition(null);
+    }
+  }
+
   return (
     <section className="panel">
       <div className="section-heading">
@@ -170,7 +241,7 @@ function FlashPlanPanel({
           <p className="eyebrow">Validation stage</p>
           <h2>Flash Plan Preview</h2>
         </div>
-        <p>No direct partition-flash command in this section is executable yet. It resolves targets and modes first.</p>
+        <p>Direct image flashing is unlocked only for resolved steps after device partition metadata is confirmed.</p>
       </div>
 
       <div className="plan-controls">
@@ -187,6 +258,7 @@ function FlashPlanPanel({
               setSlotStrategy("active");
               setPlan(null);
               setPartitionInfo([]);
+              setFlashConfirmation("");
             }}
             disabled={!romPath}
           >
@@ -200,6 +272,7 @@ function FlashPlanPanel({
               setSlotStrategy("both");
               setPlan(null);
               setPartitionInfo([]);
+              setFlashConfirmation("");
             }}
             disabled={!romPath || bootLayout !== "ab"}
           >
@@ -259,30 +332,59 @@ function FlashPlanPanel({
             {plan.steps.length === 0 ? (
               <div className="plan-empty">No direct partition flash steps were generated.</div>
             ) : (
-              plan.steps.map((step, index) => (
-                <article className="plan-step" key={`${step.imagePath}-${step.partition}-${index}`}>
-                  <div className="plan-step-heading">
-                    <div>
-                      <span className="plan-index">{String(index + 1).padStart(2, "0")}</span>
-                      <code>{step.image}</code>
-                      <span className="plan-arrow">→</span>
-                      <code>{step.partition}</code>
+              plan.steps.map((step, index) => {
+                const targetMetadata = validatedTargets.get(step.partition);
+                const canFlash =
+                  step.state === "resolved" &&
+                  Boolean(targetMetadata) &&
+                  flashConfirmation === "FLASH" &&
+                  serial !== null &&
+                  flashingPartition === null;
+
+                return (
+                  <article className="plan-step" key={`${step.imagePath}-${step.partition}-${index}`}>
+                    <div className="plan-step-heading">
+                      <div>
+                        <span className="plan-index">{String(index + 1).padStart(2, "0")}</span>
+                        <code>{step.image}</code>
+                        <span className="plan-arrow">→</span>
+                        <code>{step.partition}</code>
+                      </div>
+                      <span className={`plan-state plan-state-${step.state}`}>{stateLabel(step.state)}</span>
                     </div>
-                    <span className={`plan-state plan-state-${step.state}`}>{stateLabel(step.state)}</span>
-                  </div>
 
-                  <div className="plan-meta">
-                    <span>Required mode: {step.requiredMode}</span>
-                  </div>
+                    <div className="plan-meta">
+                      <span>Required mode: {targetMetadata?.recommendedMode ?? step.requiredMode}</span>
+                      {targetMetadata && <span> · Partition size: {formatBytes(targetMetadata.sizeBytes)}</span>}
+                    </div>
 
-                  <div className="command-preview">
-                    <span>Command preview</span>
-                    <code>{step.commandPreview}</code>
-                  </div>
+                    <div className="command-preview">
+                      <span>Command preview</span>
+                      <code>{step.commandPreview}</code>
+                    </div>
 
-                  {step.warning && <p className="plan-step-warning">{step.warning}</p>}
-                </article>
-              ))
+                    {step.warning && <p className="plan-step-warning">{step.warning}</p>}
+
+                    {step.state === "resolved" && (
+                      <div className="step-flash-action">
+                        <span>
+                          {targetMetadata
+                            ? "Partition metadata confirmed. Backend will re-check unlock state, mode, size and snapshot status before writing."
+                            : "Probe partitions before this step can be flashed."}
+                        </span>
+                        <button
+                          type="button"
+                          className="button button-danger"
+                          disabled={!canFlash}
+                          onClick={() => void flashResolvedStep(step)}
+                        >
+                          {flashingPartition === step.partition ? "Flashing…" : `Flash ${step.partition}`}
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })
             )}
           </div>
 
@@ -295,7 +397,7 @@ function FlashPlanPanel({
               <button
                 type="button"
                 className="button button-secondary"
-                disabled={!serial || probeTargets.length === 0 || probing}
+                disabled={!serial || probeTargets.length === 0 || probing || flashingPartition !== null}
                 onClick={() => void probeDevicePartitions()}
               >
                 {probing ? "Probing…" : "Probe Partitions"}
@@ -338,6 +440,28 @@ function FlashPlanPanel({
             )}
           </div>
 
+          {plan.steps.some((step) => step.state === "resolved") && (
+            <div className="manual-flash-confirmation">
+              <div>
+                <span>Manual partition flash</span>
+                <strong>Type FLASH to enable a validated step</strong>
+                <p>
+                  Confirmation resets after every successful partition write. Never disconnect the USB cable while a
+                  flash command is running.
+                </p>
+              </div>
+              <input
+                value={flashConfirmation}
+                onChange={(event) => setFlashConfirmation(event.target.value)}
+                className="confirm-input"
+                placeholder="FLASH"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={flashingPartition !== null}
+              />
+            </div>
+          )}
+
           {isZip && (
             <div className="sideload-card">
               <div className="partition-probe-heading">
@@ -348,7 +472,7 @@ function FlashPlanPanel({
                 <button
                   type="button"
                   className="button button-primary"
-                  disabled={!serial || sideloadBusy}
+                  disabled={!serial || sideloadBusy || flashingPartition !== null}
                   onClick={() => void startSideload()}
                 >
                   {sideloadBusy ? "Sideloading…" : "Start Sideload"}
