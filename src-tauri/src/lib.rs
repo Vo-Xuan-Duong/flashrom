@@ -3,6 +3,7 @@ mod compatibility;
 mod execution_preview;
 mod final_plan;
 mod flash;
+mod ordering;
 mod partition;
 mod plan;
 mod process;
