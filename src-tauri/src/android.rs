@@ -114,6 +114,7 @@ fn detect_inner() -> DeviceSnapshot {
                     let mode = match state.as_str() {
                         "unauthorized" => "ADB Unauthorized",
                         "offline" => "ADB Offline",
+                        "sideload" => "ADB Sideload",
                         _ => "Android",
                     };
                     let (boot_layout, boot_partitions) = boot_partition_info(None);
