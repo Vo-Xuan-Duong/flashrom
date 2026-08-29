@@ -315,7 +315,8 @@ pub fn generate_flash_plan(
     }
 
     if steps.is_empty() && warnings.is_empty() {
-        warnings.push("No recognized flashable image artifacts were found in this ROM input.".into());
+        warnings
+            .push("No recognized flashable image artifacts were found in this ROM input.".into());
     }
 
     let ready_for_validation = !steps.is_empty()
@@ -351,13 +352,8 @@ mod tests {
 
     #[test]
     fn resolves_single_slot_boot() {
-        let (steps, warnings) = artifact_steps(
-            &image("boot.img"),
-            "single",
-            None,
-            "active",
-            Some("ABC"),
-        );
+        let (steps, warnings) =
+            artifact_steps(&image("boot.img"), "single", None, "active", Some("ABC"));
         assert!(warnings.is_empty());
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].partition, "boot");
@@ -366,13 +362,7 @@ mod tests {
 
     #[test]
     fn resolves_both_ab_boot_targets() {
-        let (steps, _) = artifact_steps(
-            &image("boot.img"),
-            "ab",
-            Some("b"),
-            "both",
-            Some("ABC"),
-        );
+        let (steps, _) = artifact_steps(&image("boot.img"), "ab", Some("b"), "both", Some("ABC"));
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[0].partition, "boot_a");
         assert_eq!(steps[1].partition, "boot_b");
@@ -380,13 +370,8 @@ mod tests {
 
     #[test]
     fn dynamic_partition_requires_metadata() {
-        let (steps, _) = artifact_steps(
-            &image("system.img"),
-            "ab",
-            Some("a"),
-            "active",
-            Some("ABC"),
-        );
+        let (steps, _) =
+            artifact_steps(&image("system.img"), "ab", Some("a"), "active", Some("ABC"));
         assert_eq!(steps[0].required_mode, "FastbootD");
         assert_eq!(steps[0].state, "needs_partition_metadata");
     }
