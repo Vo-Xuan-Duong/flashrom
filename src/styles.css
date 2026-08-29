@@ -20,11 +20,13 @@ body {
     #0b0f17;
 }
 
-button {
+button,
+input {
   font: inherit;
 }
 
-button:focus-visible {
+button:focus-visible,
+input:focus-visible {
   outline: 2px solid #60a5fa;
   outline-offset: 2px;
 }
@@ -97,9 +99,22 @@ h2 {
   border: 1px solid #2a3547;
 }
 
+.button-primary {
+  color: #eff6ff;
+  background: #2563eb;
+  border: 1px solid #3b82f6;
+}
+
+.button-danger {
+  color: #fff7ed;
+  background: #991b1b;
+  border: 1px solid #dc2626;
+}
+
 .button:disabled,
 .action-button:disabled,
-.text-button:disabled {
+.text-button:disabled,
+.layout-option:disabled {
   cursor: not-allowed;
   opacity: 0.48;
 }
@@ -373,6 +388,120 @@ h2 {
   white-space: nowrap;
 }
 
+.operation-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #293548;
+  border-radius: 14px;
+  background: #101824;
+}
+
+.operation-copy strong,
+.operation-copy span,
+.danger-copy strong,
+.danger-copy span {
+  display: block;
+}
+
+.operation-copy strong,
+.danger-copy strong {
+  margin-bottom: 6px;
+  color: #f3f4f6;
+}
+
+.operation-copy span,
+.danger-copy span {
+  color: #8d9bb0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.command-preview {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #263246;
+  border-radius: 10px;
+  background: #080d14;
+}
+
+.command-preview > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #718097;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.command-preview code {
+  display: block;
+  overflow-x: auto;
+  color: #bfdbfe;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.danger-panel {
+  border-color: rgba(220, 38, 38, 0.38);
+  background: rgba(69, 10, 10, 0.18);
+}
+
+.danger-eyebrow {
+  color: #fca5a5;
+}
+
+.danger-copy {
+  margin-bottom: 14px;
+  padding: 14px 15px;
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  border-radius: 12px;
+  background: rgba(69, 10, 10, 0.22);
+}
+
+.command-preview-danger {
+  border-color: rgba(220, 38, 38, 0.26);
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.55fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.confirm-row label {
+  color: #d8dee9;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.confirm-input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #51313a;
+  border-radius: 9px;
+  color: #fee2e2;
+  background: #130c10;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  text-transform: none;
+}
+
+.confirm-input::placeholder {
+  color: #7f5b62;
+}
+
+.operation-note {
+  margin: 12px 0 0;
+  color: #fca5a5;
+  font-size: 0.78rem;
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -444,6 +573,19 @@ h2 {
   font-size: 0.8rem;
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+@media (max-width: 860px) {
+  .operation-card,
+  .confirm-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .operation-card > .button,
+  .confirm-row > .button {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 760px) {
