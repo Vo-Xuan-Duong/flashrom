@@ -32,9 +32,7 @@ pub struct RomCompatibility {
 fn normalize_product(value: &str) -> Option<String> {
     let value = value
         .trim()
-        .trim_matches(|character: char| {
-            matches!(character, '"' | '\'' | '[' | ']' | '(' | ')')
-        })
+        .trim_matches(|character: char| matches!(character, '"' | '\'' | '[' | ']' | '(' | ')'))
         .to_lowercase();
 
     if value.is_empty()
@@ -50,9 +48,7 @@ fn normalize_product(value: &str) -> Option<String> {
 
 fn split_products(value: &str) -> Vec<String> {
     value
-        .split(|character: char| {
-            matches!(character, '|' | ',' | ';') || character.is_whitespace()
-        })
+        .split(|character: char| matches!(character, '|' | ',' | ';') || character.is_whitespace())
         .filter_map(normalize_product)
         .collect()
 }
@@ -150,10 +146,7 @@ fn collect_evidence(path: &Path) -> Vec<RomProductEvidence> {
         let Some(contents) = read_metadata(&candidate) else {
             continue;
         };
-        evidence.extend(parse_metadata_text(
-            &contents,
-            &candidate.to_string_lossy(),
-        ));
+        evidence.extend(parse_metadata_text(&contents, &candidate.to_string_lossy()));
     }
 
     evidence.sort_by(|left, right| {
@@ -238,10 +231,7 @@ pub(crate) fn inspect_compatibility_inner(
 }
 
 #[tauri::command]
-pub fn inspect_rom_compatibility(
-    path: String,
-    serial: String,
-) -> Result<RomCompatibility, String> {
+pub fn inspect_rom_compatibility(path: String, serial: String) -> Result<RomCompatibility, String> {
     inspect_compatibility_inner(&path, &serial)
 }
 
@@ -262,10 +252,8 @@ mod tests {
 
     #[test]
     fn parses_ota_device_metadata() {
-        let evidence = parse_metadata_text(
-            "ota-type=AB\npre-device=sunstone,moonstone\n",
-            "metadata",
-        );
+        let evidence =
+            parse_metadata_text("ota-type=AB\npre-device=sunstone,moonstone\n", "metadata");
         assert_eq!(evidence.len(), 2);
     }
 
