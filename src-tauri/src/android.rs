@@ -11,6 +11,8 @@ pub struct DeviceSnapshot {
     slot: Option<String>,
     product: Option<String>,
     tool: Option<String>,
+    boot_layout: String,
+    boot_partitions: Vec<String>,
     diagnostic: String,
 }
 
@@ -23,7 +25,27 @@ pub struct ActionResult {
     output: String,
 }
 
+fn boot_partition_info(is_ab: Option<bool>) -> (String, Vec<String>) {
+    match is_ab {
+        Some(true) => (
+            "ab".into(),
+            vec!["boot_a".to_string(), "boot_b".to_string()],
+        ),
+        Some(false) => ("single".into(), vec!["boot".to_string()]),
+        None => ("unknown".into(), Vec::new()),
+    }
+}
+
+fn normalize_slot(value: &str) -> Option<String> {
+    let slot = value.trim().trim_start_matches('_').to_lowercase();
+    match slot.as_str() {
+        "a" | "b" => Some(slot),
+        _ => None,
+    }
+}
+
 fn disconnected(diagnostic: impl Into<String>) -> DeviceSnapshot {
+    let (boot_layout, boot_partitions) = boot_partition_info(None);
     DeviceSnapshot {
         connected: false,
         serial: None,
@@ -31,6 +53,8 @@ fn disconnected(diagnostic: impl Into<String>) -> DeviceSnapshot {
         slot: None,
         product: None,
         tool: None,
+        boot_layout,
+        boot_partitions,
         diagnostic: diagnostic.into(),
     }
 }
@@ -66,6 +90,18 @@ fn fastboot_var(output: &CommandOutput, key: &str) -> Option<String> {
     })
 }
 
+fn adb_prop(serial: &str, property: &str) -> Option<String> {
+    run(
+        AndroidTool::Adb,
+        &["-s", serial, "shell", "getprop", property],
+    )
+    .ok()
+    .and_then(|output| {
+        let value = output.stdout.trim().to_string();
+        (!value.is_empty()).then_some(value)
+    })
+}
+
 fn detect_inner() -> DeviceSnapshot {
     let mut diagnostics = Vec::new();
 
@@ -78,6 +114,7 @@ fn detect_inner() -> DeviceSnapshot {
                         "offline" => "ADB Offline",
                         _ => "Android",
                     };
+                    let (boot_layout, boot_partitions) = boot_partition_info(None);
                     return DeviceSnapshot {
                         connected: true,
                         serial: Some(serial),
@@ -85,26 +122,25 @@ fn detect_inner() -> DeviceSnapshot {
                         slot: None,
                         product: None,
                         tool: Some("adb".into()),
+                        boot_layout,
+                        boot_partitions,
                         diagnostic: format!("ADB reports device state: {state}."),
                     };
                 }
 
-                let boot_mode = run(
-                    AndroidTool::Adb,
-                    &["-s", &serial, "shell", "getprop", "ro.bootmode"],
-                )
-                .ok()
-                .map(|value| value.stdout.trim().to_lowercase())
-                .unwrap_or_default();
-                let product = run(
-                    AndroidTool::Adb,
-                    &["-s", &serial, "shell", "getprop", "ro.product.device"],
-                )
-                .ok()
-                .and_then(|value| {
-                    let product = value.stdout.trim().to_string();
-                    (!product.is_empty()).then_some(product)
-                });
+                let boot_mode = adb_prop(&serial, "ro.bootmode")
+                    .unwrap_or_default()
+                    .to_lowercase();
+                let product = adb_prop(&serial, "ro.product.device");
+                let slot = adb_prop(&serial, "ro.boot.slot_suffix")
+                    .and_then(|value| normalize_slot(&value))
+                    .or_else(|| {
+                        adb_prop(&serial, "ro.boot.slot").and_then(|value| normalize_slot(&value))
+                    });
+                let ab_update = adb_prop(&serial, "ro.build.ab_update")
+                    .map(|value| value.eq_ignore_ascii_case("true"));
+                let is_ab = slot.as_ref().map(|_| true).or(ab_update);
+                let (boot_layout, boot_partitions) = boot_partition_info(is_ab);
 
                 return DeviceSnapshot {
                     connected: true,
@@ -114,9 +150,11 @@ fn detect_inner() -> DeviceSnapshot {
                     } else {
                         "Android".into()
                     },
-                    slot: None,
+                    slot,
                     product,
                     tool: Some("adb".into()),
+                    boot_layout,
+                    boot_partitions,
                     diagnostic: "Device detected through ADB.".into(),
                 };
             }
@@ -138,10 +176,24 @@ fn detect_inner() -> DeviceSnapshot {
                     &["-s", &serial, "getvar", "current-slot"],
                 )
                 .ok()
-                .and_then(|value| fastboot_var(&value, "current-slot"));
+                .and_then(|value| fastboot_var(&value, "current-slot"))
+                .and_then(|value| normalize_slot(&value));
                 let product = run(AndroidTool::Fastboot, &["-s", &serial, "getvar", "product"])
                     .ok()
                     .and_then(|value| fastboot_var(&value, "product"));
+                let has_boot_slot = run(
+                    AndroidTool::Fastboot,
+                    &["-s", &serial, "getvar", "has-slot:boot"],
+                )
+                .ok()
+                .and_then(|value| fastboot_var(&value, "has-slot:boot"))
+                .and_then(|value| match value.to_lowercase().as_str() {
+                    "yes" => Some(true),
+                    "no" => Some(false),
+                    _ => None,
+                });
+                let is_ab = has_boot_slot.or_else(|| slot.as_ref().map(|_| true));
+                let (boot_layout, boot_partitions) = boot_partition_info(is_ab);
 
                 let mode = if userspace.as_deref() == Some("yes") {
                     "FastbootD"
@@ -156,6 +208,8 @@ fn detect_inner() -> DeviceSnapshot {
                     slot,
                     product,
                     tool: Some("fastboot".into()),
+                    boot_layout,
+                    boot_partitions,
                     diagnostic: "Device detected through Fastboot.".into(),
                 };
             }
@@ -209,7 +263,9 @@ pub fn reboot_device(target: String) -> Result<ActionResult, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fastboot_var, parse_adb_device, parse_fastboot_device};
+    use super::{
+        boot_partition_info, fastboot_var, normalize_slot, parse_adb_device, parse_fastboot_device,
+    };
     use crate::process::CommandOutput;
 
     #[test]
@@ -238,5 +294,27 @@ mod tests {
             stderr: "current-slot: b\nFinished. Total time: 0.001s\n".into(),
         };
         assert_eq!(fastboot_var(&output, "current-slot"), Some("b".into()));
+    }
+
+    #[test]
+    fn normalizes_slot_suffix() {
+        assert_eq!(normalize_slot("_a\n"), Some("a".into()));
+        assert_eq!(normalize_slot("b"), Some("b".into()));
+        assert_eq!(normalize_slot(""), None);
+    }
+
+    #[test]
+    fn maps_boot_partition_layout() {
+        assert_eq!(
+            boot_partition_info(Some(false)),
+            ("single".into(), vec!["boot".to_string()])
+        );
+        assert_eq!(
+            boot_partition_info(Some(true)),
+            (
+                "ab".into(),
+                vec!["boot_a".to_string(), "boot_b".to_string()]
+            )
+        );
     }
 }
