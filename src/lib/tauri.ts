@@ -72,6 +72,21 @@ export interface FlashPlan {
   readyForValidation: boolean;
 }
 
+export interface PartitionTargetMetadata {
+  name: string;
+  logical: boolean | null;
+  sizeBytes: number | null;
+  partitionType: string | null;
+  recommendedMode: "Fastboot" | "FastbootD" | "Unknown" | string;
+}
+
+export interface PartitionMetadata {
+  basePartition: string;
+  hasSlot: boolean | null;
+  targets: PartitionTargetMetadata[];
+  diagnostic: string;
+}
+
 export type RebootTarget = "android" | "bootloader" | "fastbootd" | "recovery";
 
 export function detectDevice(): Promise<DeviceSnapshot> {
@@ -102,4 +117,11 @@ export function generateFlashPlan(options: {
   serial: string | null;
 }): Promise<FlashPlan> {
   return invoke<FlashPlan>("generate_flash_plan", options);
+}
+
+export function inspectPartitions(
+  serial: string,
+  partitions: string[],
+): Promise<PartitionMetadata[]> {
+  return invoke<PartitionMetadata[]>("inspect_partitions", { serial, partitions });
 }
