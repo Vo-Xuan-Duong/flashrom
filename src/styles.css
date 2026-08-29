@@ -78,7 +78,8 @@ h2 {
 
 .button,
 .text-button,
-.action-button {
+.action-button,
+.layout-option {
   border: 0;
   cursor: pointer;
 }
@@ -156,7 +157,7 @@ h2 {
 
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
   margin: 22px 0 0;
   overflow: hidden;
@@ -211,6 +212,165 @@ h2 {
   color: #7f8da3;
   font-size: 0.82rem;
   text-align: right;
+}
+
+.layout-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.layout-option {
+  display: flex;
+  min-height: 84px;
+  padding: 15px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #293548;
+  border-radius: 12px;
+  color: #eef2ff;
+  background: #151d2b;
+  text-align: left;
+}
+
+.layout-option:hover,
+.layout-option-active {
+  border-color: #4f74a5;
+  background: #18263b;
+}
+
+.layout-option-active {
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.2);
+}
+
+.layout-option span {
+  color: #8594aa;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.partition-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 15px;
+  padding: 14px 15px;
+  border: 1px solid #202a39;
+  border-radius: 12px;
+  background: #0f1623;
+}
+
+.partition-preview > span {
+  color: #8b9ab0;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.partition-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.partition-pill {
+  padding: 6px 9px;
+  border: 1px solid #344258;
+  border-radius: 8px;
+  color: #dbeafe;
+  background: #172033;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.partition-pill-active {
+  border-color: #3b82f6;
+  background: rgba(37, 99, 235, 0.16);
+}
+
+.partition-pill-muted {
+  color: #8492a8;
+}
+
+.drop-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.drop-zone {
+  display: grid;
+  min-width: 0;
+  min-height: 138px;
+  padding: 18px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px dashed #3a485d;
+  border-radius: 14px;
+  background: rgba(10, 16, 26, 0.72);
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.drop-zone-active {
+  border-color: #60a5fa;
+  background: rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.drop-zone-filled {
+  border-style: solid;
+}
+
+.drop-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  color: #bfdbfe;
+  background: #172033;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.drop-copy {
+  min-width: 0;
+}
+
+.drop-copy strong,
+.drop-copy span,
+.drop-copy small {
+  display: block;
+}
+
+.drop-copy strong {
+  margin-bottom: 6px;
+  color: #f3f4f6;
+}
+
+.drop-copy span {
+  overflow: hidden;
+  color: #b8c5d8;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-copy small {
+  margin-top: 7px;
+  overflow: hidden;
+  color: #718097;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-grid {
@@ -303,19 +463,39 @@ h2 {
   }
 
   .device-grid,
+  .layout-options,
   .action-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .drop-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-@media (max-width: 460px) {
+@media (max-width: 520px) {
   .device-grid,
+  .layout-options,
   .action-grid {
     grid-template-columns: 1fr;
   }
 
-  .device-heading {
+  .device-heading,
+  .partition-preview {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .partition-pills {
+    justify-content: flex-start;
+  }
+
+  .drop-zone {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .drop-zone > .text-button {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
