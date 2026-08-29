@@ -175,7 +175,10 @@ mod tests {
 
     #[test]
     fn parses_fastboot_sizes() {
-        assert_eq!(parse_size(Some("0x0000000004000000".into())), Some(67_108_864));
+        assert_eq!(
+            parse_size(Some("0x0000000004000000".into())),
+            Some(67_108_864)
+        );
         assert_eq!(parse_size(Some("4096".into())), Some(4096));
         assert_eq!(parse_size(Some("invalid".into())), None);
     }
