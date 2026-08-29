@@ -31,6 +31,12 @@ export interface ActionResult {
   output: string;
 }
 
+export interface ProcessOutputEvent {
+  operationId: string;
+  stream: "stdout" | "stderr" | string;
+  data: string;
+}
+
 export interface RomArtifact {
   name: string;
   path: string;
@@ -124,4 +130,8 @@ export function inspectPartitions(
   partitions: string[],
 ): Promise<PartitionMetadata[]> {
   return invoke<PartitionMetadata[]>("inspect_partitions", { serial, partitions });
+}
+
+export function adbSideload(serial: string, zipPath: string): Promise<ActionResult> {
+  return invoke<ActionResult>("adb_sideload", { serial, zipPath });
 }
