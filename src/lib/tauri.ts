@@ -145,6 +145,24 @@ export interface FinalFlashPlan {
   readyForExecution: boolean;
 }
 
+export interface ExecutionPreviewAction {
+  index: number;
+  kind: "preflight" | "mode_transition" | "revalidate_step" | "flash_preview" | "post_write_check" | "finish" | string;
+  mode: string | null;
+  partition: string | null;
+  image: string | null;
+  commandPreview: string | null;
+  description: string;
+}
+
+export interface ExecutionPreview {
+  finalPlan: FinalFlashPlan;
+  actions: ExecutionPreviewAction[];
+  blockedReason: string | null;
+  automaticExecutionEnabled: boolean;
+  diagnostic: string;
+}
+
 export type RebootTarget = "android" | "bootloader" | "fastbootd" | "recovery";
 
 export function detectDevice(): Promise<DeviceSnapshot> {
@@ -197,6 +215,14 @@ export function resolveFinalFlashPlan(options: {
   slotStrategy: SlotStrategy;
 }): Promise<FinalFlashPlan> {
   return invoke<FinalFlashPlan>("resolve_final_flash_plan", options);
+}
+
+export function buildExecutionPreview(options: {
+  path: string;
+  serial: string;
+  slotStrategy: SlotStrategy;
+}): Promise<ExecutionPreview> {
+  return invoke<ExecutionPreview>("build_execution_preview", options);
 }
 
 export function adbSideload(serial: string, zipPath: string): Promise<ActionResult> {
