@@ -2,23 +2,23 @@ use std::{fs, path::Path};
 
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RomArtifact {
-    name: String,
-    path: String,
-    kind: String,
-    size: u64,
+    pub(crate) name: String,
+    pub(crate) path: String,
+    pub(crate) kind: String,
+    pub(crate) size: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RomInspection {
-    path: String,
-    kind: String,
-    size: u64,
-    artifacts: Vec<RomArtifact>,
-    diagnostic: String,
+    pub(crate) path: String,
+    pub(crate) kind: String,
+    pub(crate) size: u64,
+    pub(crate) artifacts: Vec<RomArtifact>,
+    pub(crate) diagnostic: String,
 }
 
 fn file_kind(path: &Path) -> String {
@@ -117,9 +117,8 @@ fn classify_directory(artifacts: &[RomArtifact]) -> String {
     }
 }
 
-#[tauri::command]
-pub fn inspect_rom(path: String) -> Result<RomInspection, String> {
-    let input = Path::new(&path);
+pub(crate) fn inspect_rom_inner(path: &str) -> Result<RomInspection, String> {
+    let input = Path::new(path);
     let metadata = fs::metadata(input)
         .map_err(|error| format!("ROM input does not exist or cannot be accessed: {error}"))?;
 
@@ -137,7 +136,7 @@ pub fn inspect_rom(path: String) -> Result<RomInspection, String> {
             .ok_or_else(|| "Unable to inspect the selected ROM file.".to_string())?;
 
         return Ok(RomInspection {
-            path,
+            path: path.to_string(),
             kind: kind.clone(),
             size: metadata.len(),
             artifacts: vec![value],
@@ -158,7 +157,7 @@ pub fn inspect_rom(path: String) -> Result<RomInspection, String> {
         .count();
 
     Ok(RomInspection {
-        path,
+        path: path.to_string(),
         kind: kind.clone(),
         size,
         artifacts,
@@ -166,6 +165,11 @@ pub fn inspect_rom(path: String) -> Result<RomInspection, String> {
             "Detected {kind} with {image_count} image file(s) in the inspected level."
         ),
     })
+}
+
+#[tauri::command]
+pub fn inspect_rom(path: String) -> Result<RomInspection, String> {
+    inspect_rom_inner(&path)
 }
 
 #[cfg(test)]
