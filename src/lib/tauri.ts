@@ -31,6 +31,14 @@ export interface ActionResult {
   output: string;
 }
 
+export interface FlashExecutionResult extends ActionResult {
+  partition: string;
+  imageSize: number;
+  partitionSize: number;
+  requiredMode: string;
+  product: string | null;
+}
+
 export interface ProcessOutputEvent {
   operationId: string;
   stream: "stdout" | "stderr" | string;
@@ -134,4 +142,13 @@ export function inspectPartitions(
 
 export function adbSideload(serial: string, zipPath: string): Promise<ActionResult> {
   return invoke<ActionResult>("adb_sideload", { serial, zipPath });
+}
+
+export function flashImage(options: {
+  serial: string;
+  partition: string;
+  imagePath: string;
+  confirmation: string;
+}): Promise<FlashExecutionResult> {
+  return invoke<FlashExecutionResult>("flash_image", options);
 }
