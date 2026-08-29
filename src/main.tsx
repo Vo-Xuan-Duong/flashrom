@@ -4,6 +4,7 @@ import App from "./App";
 import "./styles.css";
 import "./rom.css";
 import "./plan.css";
+import "./sideload.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
