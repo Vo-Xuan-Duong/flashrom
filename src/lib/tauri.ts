@@ -9,6 +9,8 @@ export type DeviceMode =
   | "ADB Offline"
   | "Disconnected";
 
+export type BootLayout = "single" | "ab" | "unknown";
+
 export interface DeviceSnapshot {
   connected: boolean;
   serial: string | null;
@@ -16,6 +18,8 @@ export interface DeviceSnapshot {
   slot: string | null;
   product: string | null;
   tool: "adb" | "fastboot" | null;
+  bootLayout: BootLayout;
+  bootPartitions: string[];
   diagnostic: string;
 }
 
