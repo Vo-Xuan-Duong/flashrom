@@ -101,6 +101,49 @@ export interface PartitionMetadata {
   diagnostic: string;
 }
 
+export interface RomProductEvidence {
+  product: string;
+  source: string;
+  key: string;
+}
+
+export interface RomCompatibility {
+  deviceProduct: string | null;
+  romProducts: string[];
+  evidence: RomProductEvidence[];
+  status: "matched" | "mismatch" | "unknown" | string;
+  safeToAutoFlash: boolean;
+  diagnostic: string;
+}
+
+export interface FinalFlashPlanStep {
+  image: string;
+  imagePath: string;
+  imageSize: number;
+  basePartition: string;
+  partition: string;
+  partitionSize: number | null;
+  logical: boolean | null;
+  requiredMode: "Fastboot" | "FastbootD" | "Unknown" | string;
+  phase: number;
+  state: "ready" | "blocked" | "manual_only" | string;
+  commandPreview: string;
+  warning: string | null;
+}
+
+export interface FinalFlashPlan {
+  compatibility: RomCompatibility;
+  activeSlot: string | null;
+  slotStrategy: SlotStrategy;
+  bootloaderUnlocked: boolean | null;
+  snapshotUpdateStatus: string | null;
+  currentMode: string;
+  steps: FinalFlashPlanStep[];
+  warnings: string[];
+  requiresModeSwitch: boolean;
+  readyForExecution: boolean;
+}
+
 export type RebootTarget = "android" | "bootloader" | "fastbootd" | "recovery";
 
 export function detectDevice(): Promise<DeviceSnapshot> {
@@ -138,6 +181,21 @@ export function inspectPartitions(
   partitions: string[],
 ): Promise<PartitionMetadata[]> {
   return invoke<PartitionMetadata[]>("inspect_partitions", { serial, partitions });
+}
+
+export function inspectRomCompatibility(
+  path: string,
+  serial: string,
+): Promise<RomCompatibility> {
+  return invoke<RomCompatibility>("inspect_rom_compatibility", { path, serial });
+}
+
+export function resolveFinalFlashPlan(options: {
+  path: string;
+  serial: string;
+  slotStrategy: SlotStrategy;
+}): Promise<FinalFlashPlan> {
+  return invoke<FinalFlashPlan>("resolve_final_flash_plan", options);
 }
 
 export function adbSideload(serial: string, zipPath: string): Promise<ActionResult> {
