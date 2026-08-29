@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import FinalPlanPanel from "./components/FinalPlanPanel";
 import FlashPlanPanel from "./components/FlashPlanPanel";
 import {
   bootTwrp,
@@ -472,6 +473,13 @@ function App() {
         onLog={appendLog}
       />
 
+      <FinalPlanPanel
+        romPath={romPath}
+        serial={device.serial}
+        deviceProduct={device.product}
+        onLog={appendLog}
+      />
+
       <section className="panel">
         <div className="section-heading">
           <div>
@@ -593,12 +601,13 @@ function App() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Next milestone</p>
-            <h2>Partition metadata validation</h2>
+            <h2>Ordered full-ROM executor</h2>
           </div>
         </div>
         <p>
-          Flash Plan Preview now maps known images without executing them. The next layer will query each partition for
-          A/B slot support, logical/dynamic status and compatibility before any partition write command can be enabled.
+          Final validation now resolves product compatibility, A/B targets, partition sizes and Fastboot/FastbootD
+          phases. The next layer will define a conservative partition ordering policy, revalidate before every write,
+          execute serially and stop immediately on any device-state change or failed step.
         </p>
       </section>
 
