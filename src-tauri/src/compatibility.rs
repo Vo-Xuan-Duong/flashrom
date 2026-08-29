@@ -161,6 +161,16 @@ fn collect_evidence(path: &Path) -> Vec<RomProductEvidence> {
     evidence
 }
 
+fn identity_products(evidence: &[RomProductEvidence]) -> Vec<String> {
+    evidence
+        .iter()
+        .filter(|item| !item.key.eq_ignore_ascii_case("board"))
+        .map(|item| item.product.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 pub(crate) fn inspect_compatibility_inner(
     path: &str,
     serial: &str,
@@ -181,12 +191,7 @@ pub(crate) fn inspect_compatibility_inner(
 
     let device_product = getvar(serial, "product").and_then(|value| normalize_product(&value));
     let evidence = collect_evidence(input);
-    let rom_products = evidence
-        .iter()
-        .map(|item| item.product.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+    let rom_products = identity_products(&evidence);
 
     let (status, safe_to_auto_flash, diagnostic) =
         match (&device_product, rom_products.is_empty()) {
@@ -200,21 +205,21 @@ pub(crate) fn inspect_compatibility_inner(
                 "unknown",
                 false,
                 format!(
-                    "Device product is {device}, but no trusted ROM product/codename metadata was found. Automatic ROM flashing remains blocked."
+                    "Device product is {device}, but no trusted ROM product/codename identity metadata was found. Board-only metadata is not enough for automatic flashing."
                 ),
             ),
             (Some(device), false) if rom_products.iter().any(|product| product == device) => (
                 "matched",
                 true,
                 format!(
-                    "ROM metadata matches Fastboot product {device}. Compatibility validation passed."
+                    "ROM identity metadata matches Fastboot product {device}. Compatibility validation passed."
                 ),
             ),
             (Some(device), false) => (
                 "mismatch",
                 false,
                 format!(
-                    "ROM metadata targets [{}], but the connected device reports product {device}. Flashing is blocked.",
+                    "ROM identity metadata targets [{}], but the connected device reports product {device}. Flashing is blocked.",
                     rom_products.join(", ")
                 ),
             ),
@@ -237,7 +242,7 @@ pub fn inspect_rom_compatibility(path: String, serial: String) -> Result<RomComp
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_product, parse_metadata_text, split_products};
+    use super::{identity_products, normalize_product, parse_metadata_text, split_products};
 
     #[test]
     fn parses_android_info_product_requirements() {
@@ -255,6 +260,15 @@ mod tests {
         let evidence =
             parse_metadata_text("ota-type=AB\npre-device=sunstone,moonstone\n", "metadata");
         assert_eq!(evidence.len(), 2);
+    }
+
+    #[test]
+    fn board_is_evidence_but_not_device_identity() {
+        let evidence = parse_metadata_text(
+            "require board=sm8550\nrequire product=sunstone\n",
+            "android-info.txt",
+        );
+        assert_eq!(identity_products(&evidence), vec!["sunstone".to_string()]);
     }
 
     #[test]
