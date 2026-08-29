@@ -16,11 +16,13 @@ FlashROM is a Windows-first Android flashing utility built with **Rust + Tauri 2
 - Accept a TWRP `.img` and ROM package/folder through native Tauri drag-and-drop.
 - Temporarily boot a TWRP image with `fastboot boot` after validating the selected file and device mode.
 - Perform a guarded Factory Reset with `fastboot -w` after an exact `WIPE` confirmation.
+- Analyze dropped ROM inputs locally and classify ZIP, `payload.bin`, `super.img`, image files, image folders, and common Fastboot ROM layouts.
+- List detected ROM artifacts and image sizes before any write operation is allowed.
 - Reboot between Android, Bootloader, FastbootD, and Recovery.
 - Scope actions to the detected device serial.
 - Keep ADB/Fastboot process execution isolated in the Rust backend.
 
-ROM partition flashing remains disabled until the analyzer and flash-plan validation layer is complete.
+ROM partition flashing remains disabled until the flash-plan validation layer is complete.
 
 ## Stack
 
@@ -110,7 +112,7 @@ Requirements:
 - Selected input must be an `.img` file.
 - The detected device serial is always included in the command.
 
-The ROM input is only stored at this stage. No ROM partition writes are enabled yet.
+ROM inputs are analyzed locally. For directories, FlashROM inspects the top level plus a conventional `images/` directory and reports discovered artifacts such as `.img`, `payload.bin`, `super.img`, and flash scripts. No ROM partition writes are enabled yet.
 
 ## Clean Data / Factory Reset
 
@@ -142,7 +144,7 @@ Rust commands
         +-- serial-scoped actions
         +-- guarded TWRP boot
         +-- guarded factory reset
-        +-- ROM analyzer (next)
+        +-- ROM analyzer
         +-- flash planner (next)
         |
         v
@@ -169,7 +171,8 @@ adb / fastboot
 - [x] TWRP image validation
 - [x] Temporary TWRP boot with command preview
 - [x] Clean Data / Factory Reset with explicit confirmation
-- [ ] Inspect dropped ROM inputs
+- [x] Inspect dropped ROM inputs
+- [x] Detect common local ROM layouts and artifacts
 - [ ] Read broader partition/device metadata
 - [ ] Validate target partition
 - [ ] Choose active/both slots for A/B devices
@@ -178,15 +181,16 @@ adb / fastboot
 
 ### v0.3 - ROM flash wizard
 
-- [ ] Scan ROM folder
-- [ ] Detect common image layouts
-- [ ] Detect recovery ZIP vs fastboot ROM vs `payload.bin`
+- [x] Scan extracted ROM folder and conventional `images/` directory
+- [x] Detect common image layouts
+- [x] Classify recovery ZIP vs fastboot ROM vs `payload.bin` input
 - [ ] Generate a flash plan
 - [ ] Validate device codename / A-B slot / dynamic partitions
 - [ ] Execute and verify the plan
 
 ### Later
 
+- Inspect ZIP contents without extraction
 - `payload.bin` extraction workflow
 - `super.img` / dynamic partition tooling
 - ADB sideload
