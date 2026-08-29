@@ -57,7 +57,9 @@ fn tool_path(tool: AndroidTool) -> PathBuf {
         }
     }
 
-    let local = PathBuf::from("tools").join("platform-tools").join(executable);
+    let local = PathBuf::from("tools")
+        .join("platform-tools")
+        .join(executable);
     if local.is_file() {
         return local;
     }
