@@ -89,16 +89,22 @@ fn detect_inner() -> DeviceSnapshot {
                     };
                 }
 
-                let boot_mode = run(AndroidTool::Adb, &["-s", &serial, "shell", "getprop", "ro.bootmode"])
-                    .ok()
-                    .map(|value| value.stdout.trim().to_lowercase())
-                    .unwrap_or_default();
-                let product = run(AndroidTool::Adb, &["-s", &serial, "shell", "getprop", "ro.product.device"])
-                    .ok()
-                    .and_then(|value| {
-                        let product = value.stdout.trim().to_string();
-                        (!product.is_empty()).then_some(product)
-                    });
+                let boot_mode = run(
+                    AndroidTool::Adb,
+                    &["-s", &serial, "shell", "getprop", "ro.bootmode"],
+                )
+                .ok()
+                .map(|value| value.stdout.trim().to_lowercase())
+                .unwrap_or_default();
+                let product = run(
+                    AndroidTool::Adb,
+                    &["-s", &serial, "shell", "getprop", "ro.product.device"],
+                )
+                .ok()
+                .and_then(|value| {
+                    let product = value.stdout.trim().to_string();
+                    (!product.is_empty()).then_some(product)
+                });
 
                 return DeviceSnapshot {
                     connected: true,
@@ -121,12 +127,18 @@ fn detect_inner() -> DeviceSnapshot {
     match run(AndroidTool::Fastboot, &["devices"]) {
         Ok(output) => {
             if let Some(serial) = parse_fastboot_device(&output.stdout) {
-                let userspace = run(AndroidTool::Fastboot, &["-s", &serial, "getvar", "is-userspace"])
-                    .ok()
-                    .and_then(|value| fastboot_var(&value, "is-userspace"));
-                let slot = run(AndroidTool::Fastboot, &["-s", &serial, "getvar", "current-slot"])
-                    .ok()
-                    .and_then(|value| fastboot_var(&value, "current-slot"));
+                let userspace = run(
+                    AndroidTool::Fastboot,
+                    &["-s", &serial, "getvar", "is-userspace"],
+                )
+                .ok()
+                .and_then(|value| fastboot_var(&value, "is-userspace"));
+                let slot = run(
+                    AndroidTool::Fastboot,
+                    &["-s", &serial, "getvar", "current-slot"],
+                )
+                .ok()
+                .and_then(|value| fastboot_var(&value, "current-slot"));
                 let product = run(AndroidTool::Fastboot, &["-s", &serial, "getvar", "product"])
                     .ok()
                     .and_then(|value| fastboot_var(&value, "product"));
