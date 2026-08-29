@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
+  buildExecutionPreview,
   resolveFinalFlashPlan,
+  type ExecutionPreview,
   type FinalFlashPlan,
   type SlotStrategy,
 } from "../lib/tauri";
@@ -34,19 +36,35 @@ function stepStateLabel(state: string) {
   return state;
 }
 
+function actionLabel(kind: string) {
+  const labels: Record<string, string> = {
+    preflight: "Preflight",
+    mode_transition: "Mode transition",
+    revalidate_step: "Revalidate",
+    flash_preview: "Flash preview",
+    post_write_check: "Post-write check",
+    finish: "Finish",
+  };
+  return labels[kind] ?? kind;
+}
+
 function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPanelProps) {
   const [slotStrategy, setSlotStrategy] = useState<SlotStrategy>("active");
   const [plan, setPlan] = useState<FinalFlashPlan | null>(null);
+  const [dryRun, setDryRun] = useState<ExecutionPreview | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dryRunBusy, setDryRunBusy] = useState(false);
 
   useEffect(() => {
     setPlan(null);
+    setDryRun(null);
   }, [romPath, serial, deviceProduct, slotStrategy]);
 
   async function resolvePlan() {
     if (!romPath || !serial || busy) return;
 
     setBusy(true);
+    setDryRun(null);
     try {
       const result = await resolveFinalFlashPlan({
         path: romPath,
@@ -65,6 +83,29 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
     }
   }
 
+  async function buildDryRun() {
+    if (!romPath || !serial || dryRunBusy) return;
+
+    setDryRunBusy(true);
+    try {
+      const result = await buildExecutionPreview({
+        path: romPath,
+        serial,
+        slotStrategy,
+      });
+      setPlan(result.finalPlan);
+      setDryRun(result);
+      onLog(
+        `Full-ROM dry run generated: ${result.actions.length} action(s), automaticExecutionEnabled=${result.automaticExecutionEnabled}.`,
+      );
+    } catch (error) {
+      setDryRun(null);
+      onLog(`Execution dry run failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setDryRunBusy(false);
+    }
+  }
+
   return (
     <section className="panel final-plan-panel">
       <div className="section-heading">
@@ -73,7 +114,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
           <h2>Final Flash Plan</h2>
         </div>
         <p>
-          Re-reads Fastboot metadata and ROM codename requirements. This section does not execute the full plan yet.
+          Re-reads Fastboot metadata and ROM codename requirements. Full-ROM writes remain disabled.
         </p>
       </div>
 
@@ -236,10 +277,55 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
                 : "Full-ROM execution remains blocked."}
             </strong>
             <span>
-              Automatic execution is intentionally not enabled yet. The next layer will serialize phases, re-check
-              state before every write and verify each completed partition.
+              The dry run below re-resolves the plan and previews mode transitions and every future guarded write.
+              It never executes `fastboot flash`.
             </span>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={!serial || !romPath || dryRunBusy}
+              onClick={() => void buildDryRun()}
+            >
+              {dryRunBusy ? "Building dry run…" : "Build Execution Dry Run"}
+            </button>
           </div>
+
+          {dryRun && (
+            <div className="execution-dry-run">
+              <div className="partition-probe-heading">
+                <div>
+                  <span>Non-executing sequence</span>
+                  <strong>Full-ROM Execution Dry Run</strong>
+                </div>
+                <span className={dryRun.blockedReason ? "final-blocked" : "final-ready"}>
+                  {dryRun.blockedReason ? "Blocked" : `${dryRun.actions.length} actions`}
+                </span>
+              </div>
+
+              <p>{dryRun.diagnostic}</p>
+              {dryRun.blockedReason && <p className="plan-step-warning">{dryRun.blockedReason}</p>}
+
+              <div className="execution-action-list">
+                {dryRun.actions.map((action) => (
+                  <article className="execution-action" key={`${action.index}-${action.kind}`}>
+                    <div className="execution-action-heading">
+                      <span className="plan-index">{String(action.index).padStart(2, "0")}</span>
+                      <strong>{actionLabel(action.kind)}</strong>
+                      {action.mode && <span>{action.mode}</span>}
+                      {action.partition && <code>{action.partition}</code>}
+                    </div>
+                    <p>{action.description}</p>
+                    {action.commandPreview && (
+                      <div className="command-preview">
+                        <span>Dry-run command</span>
+                        <code>{action.commandPreview}</code>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
