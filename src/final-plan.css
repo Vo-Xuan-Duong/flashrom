@@ -244,7 +244,7 @@
 
 .final-execution-gate {
   display: grid;
-  gap: 5px;
+  gap: 8px;
   margin-top: 14px;
   padding: 13px 14px;
   border: 1px solid #334155;
@@ -259,6 +259,11 @@
   color: #8b99ad;
   font-size: 0.75rem;
   line-height: 1.5;
+}
+
+.final-execution-gate .button {
+  justify-self: start;
+  margin-top: 3px;
 }
 
 .gate-ready {
@@ -277,6 +282,67 @@
 
 .gate-blocked strong {
   color: #fca5a5;
+}
+
+.execution-dry-run {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #31415b;
+  border-radius: 12px;
+  background: #0a111c;
+}
+
+.execution-dry-run > p {
+  margin: 10px 0 0;
+  color: #8998ad;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.execution-action-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.execution-action {
+  padding: 11px 12px;
+  border: 1px solid #263348;
+  border-radius: 9px;
+  background: #0d1420;
+}
+
+.execution-action-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.execution-action-heading strong {
+  color: #dbeafe;
+  font-size: 0.77rem;
+}
+
+.execution-action-heading > span:not(.plan-index) {
+  padding: 3px 6px;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  color: #93a4bb;
+  font-size: 0.65rem;
+}
+
+.execution-action-heading code {
+  color: #bfdbfe;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.execution-action > p {
+  margin: 8px 0 0;
+  color: #7f8da3;
+  font-size: 0.72rem;
+  line-height: 1.5;
 }
 
 @media (max-width: 920px) {
