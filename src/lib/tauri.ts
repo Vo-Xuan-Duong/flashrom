@@ -5,6 +5,7 @@ export type DeviceMode =
   | "Recovery"
   | "Fastboot"
   | "FastbootD"
+  | "ADB Sideload"
   | "ADB Unauthorized"
   | "ADB Offline"
   | "Disconnected";
