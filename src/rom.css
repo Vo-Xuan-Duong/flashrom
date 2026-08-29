@@ -1,0 +1,109 @@
+.rom-inspection {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #273449;
+  border-radius: 14px;
+  background: #0d1420;
+}
+
+.rom-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #273449;
+  border-radius: 10px;
+  background: #273449;
+}
+
+.rom-summary > div {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #111827;
+}
+
+.rom-summary span,
+.rom-summary strong {
+  display: block;
+}
+
+.rom-summary span {
+  margin-bottom: 5px;
+  color: #718097;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rom-summary strong {
+  overflow: hidden;
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rom-inspection > p {
+  margin: 12px 0;
+  color: #8d9bb0;
+  font-size: 0.8rem;
+}
+
+.artifact-list {
+  overflow: hidden;
+  border: 1px solid #202a39;
+  border-radius: 10px;
+}
+
+.artifact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 90px;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border-bottom: 1px solid #202a39;
+  background: #0a1019;
+}
+
+.artifact-row:last-child {
+  border-bottom: 0;
+}
+
+.artifact-row code {
+  overflow: hidden;
+  color: #c7d2fe;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-row span {
+  color: #7f8da3;
+  font-size: 0.74rem;
+}
+
+.artifact-row span:last-child {
+  text-align: right;
+}
+
+.artifact-more {
+  padding: 9px 12px;
+  color: #7f8da3;
+  background: #0a1019;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 680px) {
+  .rom-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .artifact-row span:first-of-type {
+    display: none;
+  }
+}
