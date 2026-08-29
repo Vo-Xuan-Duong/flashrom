@@ -101,7 +101,10 @@ fn collect_directory(directory: &Path) -> Result<Vec<RomArtifact>, String> {
 fn classify_directory(artifacts: &[RomArtifact]) -> String {
     let has_payload = artifacts.iter().any(|item| item.kind == "payload");
     let has_flash_script = artifacts.iter().any(|item| item.kind == "flash_script");
-    let image_count = artifacts.iter().filter(|item| item.kind == "image" || item.kind == "super_image").count();
+    let image_count = artifacts
+        .iter()
+        .filter(|item| item.kind == "image" || item.kind == "super_image")
+        .count();
 
     if has_payload {
         "payload_package".into()
@@ -159,7 +162,9 @@ pub fn inspect_rom(path: String) -> Result<RomInspection, String> {
         kind: kind.clone(),
         size,
         artifacts,
-        diagnostic: format!("Detected {kind} with {image_count} image file(s) in the inspected level."),
+        diagnostic: format!(
+            "Detected {kind} with {image_count} image file(s) in the inspected level."
+        ),
     })
 }
 
