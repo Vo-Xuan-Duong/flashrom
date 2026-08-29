@@ -1,4 +1,6 @@
 mod android;
+mod compatibility;
+mod final_plan;
 mod flash;
 mod partition;
 mod plan;
@@ -17,6 +19,8 @@ pub fn run() {
             rom::inspect_rom,
             plan::generate_flash_plan,
             partition::inspect_partitions,
+            compatibility::inspect_rom_compatibility,
+            final_plan::resolve_final_flash_plan,
             recovery::adb_sideload,
             flash::flash_image
         ])
