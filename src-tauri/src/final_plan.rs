@@ -281,10 +281,11 @@ pub(crate) fn resolve_final_flash_plan_inner(
     let snapshot_update_status = getvar(serial, "snapshot-update-status")
         .map(|value| value.trim().to_lowercase())
         .filter(|value| !value.is_empty());
-    let current_mode = if parse_yes_no(getvar(serial, "is-userspace")) == Some(true) {
-        "FastbootD"
-    } else {
-        "Fastboot"
+    let userspace = parse_yes_no(getvar(serial, "is-userspace"));
+    let current_mode = match userspace {
+        Some(true) => "FastbootD",
+        Some(false) => "Fastboot",
+        None => "Unknown",
     }
     .to_string();
 
@@ -322,6 +323,12 @@ pub(crate) fn resolve_final_flash_plan_inner(
             "Fastboot did not confirm unlocked=yes. Final-plan execution remains blocked.".into(),
         );
     }
+    if userspace.is_none() {
+        warnings.push(
+            "Fastboot did not report is-userspace=yes/no, so classic Fastboot vs FastbootD mode cannot be confirmed. Final-plan execution remains blocked."
+                .into(),
+        );
+    }
     if let Some(snapshot) = snapshot_update_status.as_deref() {
         if snapshot != "none" {
             warnings.push(format!(
@@ -353,6 +360,7 @@ pub(crate) fn resolve_final_flash_plan_inner(
         .unwrap_or(true);
     let ready_for_execution = compatibility.safe_to_auto_flash
         && bootloader_unlocked == Some(true)
+        && userspace.is_some()
         && snapshot_safe
         && !steps.is_empty()
         && steps.iter().all(|step| step.state == "ready");
