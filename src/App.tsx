@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import FlashPlanPanel from "./components/FlashPlanPanel";
 import {
   bootTwrp,
   detectDevice,
@@ -463,6 +464,14 @@ function App() {
         )}
       </section>
 
+      <FlashPlanPanel
+        romPath={romPath}
+        bootLayout={effectiveBootLayout}
+        activeSlot={device.slot}
+        serial={device.serial}
+        onLog={appendLog}
+      />
+
       <section className="panel">
         <div className="section-heading">
           <div>
@@ -584,13 +593,12 @@ function App() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Next milestone</p>
-            <h2>Validated flash plan</h2>
+            <h2>Partition metadata validation</h2>
           </div>
         </div>
         <p>
-          ROM classification is now local and automatic. The next layer will map detected images to supported
-          partitions, validate device compatibility and slot targets, then require a complete command preview before
-          partition writes are enabled.
+          Flash Plan Preview now maps known images without executing them. The next layer will query each partition for
+          A/B slot support, logical/dynamic status and compatibility before any partition write command can be enabled.
         </p>
       </section>
 
