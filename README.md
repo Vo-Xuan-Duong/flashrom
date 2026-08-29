@@ -77,9 +77,9 @@ adb / fastboot
 ### v0.1 - Device foundation
 
 - [x] Project bootstrap
-- [ ] Device detection
-- [ ] ADB/Fastboot mode detection
-- [ ] Reboot actions
+- [x] Device detection
+- [x] ADB/Fastboot mode detection
+- [x] Reboot actions
 - [ ] Realtime command log
 
 ### v0.2 - Safe manual flashing
