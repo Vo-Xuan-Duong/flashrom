@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde::Serialize;
 
 use crate::process::{run, AndroidTool, CommandOutput};
@@ -238,25 +240,107 @@ fn action_result(output: CommandOutput) -> ActionResult {
     }
 }
 
+fn require_serial(device: &DeviceSnapshot) -> Result<&str, String> {
+    if !device.connected {
+        return Err(device.diagnostic.clone());
+    }
+
+    device
+        .serial
+        .as_deref()
+        .ok_or_else(|| "Connected device has no serial number.".to_string())
+}
+
+fn require_classic_fastboot(device: &DeviceSnapshot) -> Result<&str, String> {
+    let serial = require_serial(device)?;
+
+    if device.tool.as_deref() != Some("fastboot") {
+        return Err("This action requires Fastboot. Reboot the device to Bootloader first.".into());
+    }
+
+    if device.mode != "Fastboot" {
+        return Err(format!(
+            "This action requires classic Fastboot, but the device is in {}. Reboot to Bootloader first.",
+            device.mode
+        ));
+    }
+
+    Ok(serial)
+}
+
 #[tauri::command]
 pub fn reboot_device(target: String) -> Result<ActionResult, String> {
     let device = detect_inner();
-    if !device.connected {
-        return Err(device.diagnostic);
-    }
-
+    let serial = require_serial(&device)?.to_string();
     let transport = device.tool.as_deref().unwrap_or_default();
+
     let output = match (transport, target.as_str()) {
-        ("adb", "android") => run(AndroidTool::Adb, &["reboot"]),
-        ("adb", "bootloader") => run(AndroidTool::Adb, &["reboot", "bootloader"]),
-        ("adb", "fastbootd") => run(AndroidTool::Adb, &["reboot", "fastboot"]),
-        ("adb", "recovery") => run(AndroidTool::Adb, &["reboot", "recovery"]),
-        ("fastboot", "android") => run(AndroidTool::Fastboot, &["reboot"]),
-        ("fastboot", "bootloader") => run(AndroidTool::Fastboot, &["reboot", "bootloader"]),
-        ("fastboot", "fastbootd") => run(AndroidTool::Fastboot, &["reboot", "fastboot"]),
-        ("fastboot", "recovery") => run(AndroidTool::Fastboot, &["reboot", "recovery"]),
+        ("adb", "android") => run(AndroidTool::Adb, &["-s", &serial, "reboot"]),
+        ("adb", "bootloader") => run(
+            AndroidTool::Adb,
+            &["-s", &serial, "reboot", "bootloader"],
+        ),
+        ("adb", "fastbootd") => run(AndroidTool::Adb, &["-s", &serial, "reboot", "fastboot"]),
+        ("adb", "recovery") => run(
+            AndroidTool::Adb,
+            &["-s", &serial, "reboot", "recovery"],
+        ),
+        ("fastboot", "android") => run(AndroidTool::Fastboot, &["-s", &serial, "reboot"]),
+        ("fastboot", "bootloader") => run(
+            AndroidTool::Fastboot,
+            &["-s", &serial, "reboot", "bootloader"],
+        ),
+        ("fastboot", "fastbootd") => run(
+            AndroidTool::Fastboot,
+            &["-s", &serial, "reboot", "fastboot"],
+        ),
+        ("fastboot", "recovery") => run(
+            AndroidTool::Fastboot,
+            &["-s", &serial, "reboot", "recovery"],
+        ),
         (_, _) => return Err(format!("Unsupported reboot target: {target}")),
     }?;
+
+    Ok(action_result(output))
+}
+
+#[tauri::command]
+pub fn boot_twrp(image_path: String) -> Result<ActionResult, String> {
+    let device = detect_inner();
+    let serial = require_classic_fastboot(&device)?.to_string();
+    let image = Path::new(&image_path);
+
+    if !image.is_file() {
+        return Err("The selected TWRP image does not exist or is not a file.".into());
+    }
+
+    let is_img = image
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("img"))
+        .unwrap_or(false);
+
+    if !is_img {
+        return Err("TWRP boot requires an .img file.".into());
+    }
+
+    let output = run(
+        AndroidTool::Fastboot,
+        &["-s", &serial, "boot", image_path.as_str()],
+    )?;
+
+    Ok(action_result(output))
+}
+
+#[tauri::command]
+pub fn factory_reset(confirmation: String) -> Result<ActionResult, String> {
+    if confirmation != "WIPE" {
+        return Err("Factory reset confirmation must exactly match WIPE.".into());
+    }
+
+    let device = detect_inner();
+    let serial = require_classic_fastboot(&device)?.to_string();
+    let output = run(AndroidTool::Fastboot, &["-s", &serial, "-w"])?;
 
     Ok(action_result(output))
 }
