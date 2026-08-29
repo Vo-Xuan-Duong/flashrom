@@ -1,4 +1,5 @@
 mod android;
+mod partition;
 mod plan;
 mod process;
 mod rom;
@@ -12,7 +13,8 @@ pub fn run() {
             android::boot_twrp,
             android::factory_reset,
             rom::inspect_rom,
-            plan::generate_flash_plan
+            plan::generate_flash_plan,
+            partition::inspect_partitions
         ])
         .run(tauri::generate_context!())
         .expect("error while running FlashROM");
