@@ -1,5 +1,6 @@
 mod android;
 mod process;
+mod rom;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -8,7 +9,8 @@ pub fn run() {
             android::detect_device,
             android::reboot_device,
             android::boot_twrp,
-            android::factory_reset
+            android::factory_reset,
+            rom::inspect_rom
         ])
         .run(tauri::generate_context!())
         .expect("error while running FlashROM");
