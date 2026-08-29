@@ -10,6 +10,7 @@ export type DeviceMode =
   | "Disconnected";
 
 export type BootLayout = "single" | "ab" | "unknown";
+export type SlotStrategy = "active" | "both";
 
 export interface DeviceSnapshot {
   connected: boolean;
@@ -45,6 +46,32 @@ export interface RomInspection {
   diagnostic: string;
 }
 
+export interface FlashPlanStep {
+  image: string;
+  imagePath: string;
+  partition: string;
+  requiredMode: "Fastboot" | "FastbootD" | "Unknown" | string;
+  commandPreview: string;
+  state:
+    | "resolved"
+    | "blocked"
+    | "needs_partition_metadata"
+    | "needs_compatibility_check"
+    | "unsupported"
+    | string;
+  warning: string | null;
+}
+
+export interface FlashPlan {
+  romKind: string;
+  bootLayout: BootLayout;
+  slotStrategy: SlotStrategy;
+  activeSlot: string | null;
+  steps: FlashPlanStep[];
+  warnings: string[];
+  readyForValidation: boolean;
+}
+
 export type RebootTarget = "android" | "bootloader" | "fastbootd" | "recovery";
 
 export function detectDevice(): Promise<DeviceSnapshot> {
@@ -65,4 +92,14 @@ export function factoryReset(confirmation: string): Promise<ActionResult> {
 
 export function inspectRom(path: string): Promise<RomInspection> {
   return invoke<RomInspection>("inspect_rom", { path });
+}
+
+export function generateFlashPlan(options: {
+  path: string;
+  bootLayout: BootLayout;
+  activeSlot: string | null;
+  slotStrategy: SlotStrategy;
+  serial: string | null;
+}): Promise<FlashPlan> {
+  return invoke<FlashPlan>("generate_flash_plan", options);
 }
