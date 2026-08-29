@@ -151,6 +151,7 @@ export interface ExecutionPreviewAction {
   mode: string | null;
   partition: string | null;
   image: string | null;
+  policyClass: "boot_chain" | "system_payload" | "avb_metadata" | string | null;
   commandPreview: string | null;
   description: string;
 }
@@ -158,6 +159,8 @@ export interface ExecutionPreviewAction {
 export interface ExecutionPreview {
   finalPlan: FinalFlashPlan;
   actions: ExecutionPreviewAction[];
+  orderingPolicy: string;
+  orderingPolicyComplete: boolean;
   blockedReason: string | null;
   automaticExecutionEnabled: boolean;
   diagnostic: string;
