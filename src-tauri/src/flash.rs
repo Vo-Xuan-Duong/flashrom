@@ -163,12 +163,21 @@ pub async fn flash_image(
 
     let product = getvar(&serial, "product");
     let operation_id = format!("fastboot-flash-{partition}");
+    let serial_for_run = serial.clone();
+    let partition_for_run = partition.clone();
+    let image_path_for_run = image_path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         run_streaming(
             &app,
             &operation_id,
             AndroidTool::Fastboot,
-            &["-s", &serial, "flash", &partition, &image_path],
+            &[
+                "-s",
+                &serial_for_run,
+                "flash",
+                &partition_for_run,
+                &image_path_for_run,
+            ],
         )
     })
     .await
