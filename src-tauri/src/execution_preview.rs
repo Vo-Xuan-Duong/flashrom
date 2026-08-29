@@ -1,6 +1,9 @@
 use serde::Serialize;
 
-use crate::final_plan::{resolve_final_flash_plan_inner, FinalFlashPlan};
+use crate::{
+    final_plan::{resolve_final_flash_plan_inner, FinalFlashPlan},
+    ordering::{order_final_steps, ordering_class_label},
+};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,6 +13,7 @@ pub struct ExecutionPreviewAction {
     mode: Option<String>,
     partition: Option<String>,
     image: Option<String>,
+    policy_class: Option<String>,
     command_preview: Option<String>,
     description: String,
 }
@@ -19,6 +23,8 @@ pub struct ExecutionPreviewAction {
 pub struct ExecutionPreview {
     final_plan: FinalFlashPlan,
     actions: Vec<ExecutionPreviewAction>,
+    ordering_policy: String,
+    ordering_policy_complete: bool,
     blocked_reason: Option<String>,
     automatic_execution_enabled: bool,
     diagnostic: String,
@@ -38,6 +44,7 @@ fn push_action(
     mode: Option<&str>,
     partition: Option<&str>,
     image: Option<&str>,
+    policy_class: Option<&str>,
     command_preview: Option<String>,
     description: impl Into<String>,
 ) {
@@ -47,6 +54,7 @@ fn push_action(
         mode: mode.map(str::to_string),
         partition: partition.map(str::to_string),
         image: image.map(str::to_string),
+        policy_class: policy_class.map(str::to_string),
         command_preview,
         description: description.into(),
     });
@@ -60,11 +68,13 @@ pub fn build_execution_preview(
 ) -> Result<ExecutionPreview, String> {
     let final_plan = resolve_final_flash_plan_inner(&path, &serial, &slot_strategy)?;
     let mut actions = Vec::new();
+    let ordering_policy = "conservative-v1: boot-chain -> system-payload -> AVB-metadata";
 
     push_action(
         &mut actions,
         "preflight",
         Some(&final_plan.current_mode),
+        None,
         None,
         None,
         None,
@@ -79,6 +89,8 @@ pub fn build_execution_preview(
             ),
             final_plan,
             actions,
+            ordering_policy: ordering_policy.into(),
+            ordering_policy_complete: false,
             automatic_execution_enabled: false,
             diagnostic:
                 "Dry run stopped at preflight because the validated Final Flash Plan is blocked."
@@ -86,9 +98,32 @@ pub fn build_execution_preview(
         });
     }
 
+    let ordered_steps = match order_final_steps(&final_plan.steps) {
+        Ok(steps) => steps,
+        Err(error) => {
+            return Ok(ExecutionPreview {
+                blocked_reason: Some(error),
+                final_plan,
+                actions,
+                ordering_policy: ordering_policy.into(),
+                ordering_policy_complete: false,
+                automatic_execution_enabled: false,
+                diagnostic: "Dry run stopped because at least one resolved partition has no explicit ordering rule."
+                    .into(),
+            });
+        }
+    };
+
     let mut expected_mode = final_plan.current_mode.clone();
 
-    for step in &final_plan.steps {
+    for step in &ordered_steps {
+        let policy_class = ordering_class_label(&step.base_partition).ok_or_else(|| {
+            format!(
+                "Ordering policy class is missing for {}.",
+                step.base_partition
+            )
+        })?;
+
         if step.required_mode != expected_mode {
             let command = transition_command(&serial, &step.required_mode).ok_or_else(|| {
                 format!(
@@ -103,9 +138,10 @@ pub fn build_execution_preview(
                 Some(&step.required_mode),
                 None,
                 None,
+                Some(policy_class),
                 Some(command),
                 format!(
-                    "Transition from {expected_mode} to {} and wait for the same serial to reappear before continuing.",
+                    "Transition from {expected_mode} to {} and wait for the same serial to reappear before continuing with the {policy_class} class.",
                     step.required_mode
                 ),
             );
@@ -118,9 +154,10 @@ pub fn build_execution_preview(
             Some(&expected_mode),
             Some(&step.partition),
             Some(&step.image),
+            Some(policy_class),
             None,
             format!(
-                "Re-check product, unlocked=yes, snapshot status, target size and logical/physical metadata for {}.",
+                "Re-check product, unlocked=yes, snapshot status, target size and logical/physical metadata for {} before the {policy_class} write.",
                 step.partition
             ),
         );
@@ -131,9 +168,10 @@ pub fn build_execution_preview(
             Some(&expected_mode),
             Some(&step.partition),
             Some(&step.image),
+            Some(policy_class),
             Some(step.command_preview.clone()),
             format!(
-                "Preview the guarded write of {} to {}. This dry run does not execute the command.",
+                "Preview the guarded {policy_class} write of {} to {}. This dry run does not execute the command.",
                 step.image, step.partition
             ),
         );
@@ -144,11 +182,12 @@ pub fn build_execution_preview(
             Some(&expected_mode),
             Some(&step.partition),
             Some(&step.image),
+            Some(policy_class),
             Some(format!(
                 "fastboot -s {serial} getvar partition-size:{}",
                 step.partition
             )),
-            "Future executor must confirm the device remains connected in the expected mode after the write. This is a state check, not cryptographic image verification.",
+            "Future executor must confirm the same serial remains connected in the expected mode after the write. This is a state check, not cryptographic image verification.",
         );
     }
 
@@ -159,15 +198,18 @@ pub fn build_execution_preview(
         None,
         None,
         None,
-        "Stop after the validated write sequence. Reboot and Clean Data remain explicit separate user choices.",
+        None,
+        "Stop after the conservatively ordered validated write sequence. Reboot and Clean Data remain explicit separate user choices.",
     );
 
     Ok(ExecutionPreview {
         final_plan,
         actions,
+        ordering_policy: ordering_policy.into(),
+        ordering_policy_complete: true,
         blocked_reason: None,
         automatic_execution_enabled: false,
-        diagnostic: "Execution sequence was generated as a dry run only. Automatic full-ROM writes remain disabled until partition ordering and stronger post-write verification rules are finalized.".into(),
+        diagnostic: "Execution sequence was generated with the conservative ordering policy as a dry run only. Automatic full-ROM writes remain disabled until stronger post-write verification and executor guards are finalized.".into(),
     })
 }
 
