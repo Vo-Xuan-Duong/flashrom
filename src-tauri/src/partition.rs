@@ -2,23 +2,23 @@ use serde::Serialize;
 
 use crate::process::{run, AndroidTool, CommandOutput};
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartitionTargetMetadata {
-    name: String,
-    logical: Option<bool>,
-    size_bytes: Option<u64>,
-    partition_type: Option<String>,
-    recommended_mode: String,
+    pub(crate) name: String,
+    pub(crate) logical: Option<bool>,
+    pub(crate) size_bytes: Option<u64>,
+    pub(crate) partition_type: Option<String>,
+    pub(crate) recommended_mode: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartitionMetadata {
-    base_partition: String,
-    has_slot: Option<bool>,
-    targets: Vec<PartitionTargetMetadata>,
-    diagnostic: String,
+    pub(crate) base_partition: String,
+    pub(crate) has_slot: Option<bool>,
+    pub(crate) targets: Vec<PartitionTargetMetadata>,
+    pub(crate) diagnostic: String,
 }
 
 fn fastboot_var(output: &CommandOutput, key: &str) -> Option<String> {
@@ -30,7 +30,7 @@ fn fastboot_var(output: &CommandOutput, key: &str) -> Option<String> {
     })
 }
 
-fn getvar(serial: &str, key: &str) -> Option<String> {
+pub(crate) fn getvar(serial: &str, key: &str) -> Option<String> {
     run(AndroidTool::Fastboot, &["-s", serial, "getvar", key])
         .ok()
         .and_then(|output| fastboot_var(&output, key))
@@ -69,6 +69,17 @@ fn connected_fastboot_serials() -> Result<Vec<String>, String> {
         .collect())
 }
 
+pub(crate) fn require_fastboot_serial(serial: &str) -> Result<(), String> {
+    let connected = connected_fastboot_serials()?;
+    if connected.iter().any(|value| value == serial) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Device {serial} is not currently available through Fastboot. Reboot it to Bootloader or FastbootD and refresh detection."
+        ))
+    }
+}
+
 fn target_metadata(serial: &str, target: &str) -> PartitionTargetMetadata {
     let logical = parse_yes_no(getvar(serial, &format!("is-logical:{target}")));
     let size_bytes = parse_size(getvar(serial, &format!("partition-size:{target}")));
@@ -103,21 +114,15 @@ fn infer_slot_state(serial: &str, base: &str) -> Option<bool> {
     parse_size(getvar(serial, &format!("partition-size:{base}"))).map(|_| false)
 }
 
-#[tauri::command]
-pub fn inspect_partitions(
-    serial: String,
+pub(crate) fn inspect_partitions_inner(
+    serial: &str,
     partitions: Vec<String>,
 ) -> Result<Vec<PartitionMetadata>, String> {
     if serial.trim().is_empty() {
         return Err("A detected device serial is required for partition probing.".into());
     }
 
-    let connected = connected_fastboot_serials()?;
-    if !connected.iter().any(|value| value == &serial) {
-        return Err(format!(
-            "Device {serial} is not currently available through Fastboot. Reboot it to Bootloader or FastbootD and refresh detection."
-        ));
-    }
+    require_fastboot_serial(serial)?;
 
     let mut bases = partitions
         .into_iter()
@@ -141,7 +146,7 @@ pub fn inspect_partitions(
             return Err(format!("Invalid partition name: {base}"));
         }
 
-        let has_slot = infer_slot_state(&serial, &base);
+        let has_slot = infer_slot_state(serial, &base);
         let target_names = match has_slot {
             Some(true) => vec![format!("{base}_a"), format!("{base}_b")],
             Some(false) => vec![base.clone()],
@@ -149,7 +154,7 @@ pub fn inspect_partitions(
         };
         let targets = target_names
             .iter()
-            .map(|target| target_metadata(&serial, target))
+            .map(|target| target_metadata(serial, target))
             .collect::<Vec<_>>();
 
         let diagnostic = match has_slot {
@@ -167,6 +172,14 @@ pub fn inspect_partitions(
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+pub fn inspect_partitions(
+    serial: String,
+    partitions: Vec<String>,
+) -> Result<Vec<PartitionMetadata>, String> {
+    inspect_partitions_inner(&serial, partitions)
 }
 
 #[cfg(test)]
