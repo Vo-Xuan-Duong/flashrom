@@ -11,7 +11,11 @@ The first milestone focuses on safe device-management primitives:
 
 - Detect devices connected through ADB or Fastboot.
 - Distinguish Android, Bootloader/Fastboot, and FastbootD when possible.
+- Detect single-slot vs A/B boot layouts.
+- Map single-slot devices to `boot`, and A/B devices to `boot_a` / `boot_b`.
+- Allow a manual boot-layout override when device metadata is unreliable.
 - Read basic Fastboot metadata such as current slot and product.
+- Accept a TWRP `.img` and ROM package/folder through native Tauri drag-and-drop.
 - Reboot between Android, Bootloader, FastbootD, and Recovery.
 - Keep ADB/Fastboot process execution isolated in the Rust backend.
 - Add flashing only after validation and flash-plan layers are in place.
@@ -53,16 +57,57 @@ $env:FLASHROM_PLATFORM_TOOLS="D:\Android\platform-tools"
 pnpm tauri dev
 ```
 
+## Boot partition detection
+
+FlashROM tries to identify the boot layout automatically.
+
+In Fastboot it prefers:
+
+```text
+fastboot getvar has-slot:boot
+fastboot getvar current-slot
+```
+
+In Android/Recovery through ADB it checks slot-related properties such as `ro.boot.slot_suffix`, `ro.boot.slot`, and `ro.build.ab_update`.
+
+The resulting targets are:
+
+```text
+Single-slot
+└── boot
+
+A/B
+├── boot_a
+└── boot_b
+```
+
+The UI also exposes `Auto detect`, `1 partition`, and `2 partitions (A/B)` so the layout can be overridden before any future flash command is generated.
+
+## Flash inputs
+
+The desktop UI currently accepts native file drops:
+
+```text
+TWRP
+└── *.img
+
+ROM
+└── ROM file or folder
+```
+
+Dropping these inputs only stores their local paths. It does **not** execute `fastboot flash`, sideload, erase, or any other destructive command yet.
+
 ## Architecture
 
 ```text
 React / TypeScript UI
         |
-        | Tauri invoke
+        | Tauri invoke + native drag/drop
         v
 Rust commands
         |
         +-- Android device detection
+        +-- single-slot / A-B detection
         +-- ADB/Fastboot process runner
         +-- device-state validation (next)
         +-- ROM analyzer (next)
@@ -79,14 +124,19 @@ adb / fastboot
 - [x] Project bootstrap
 - [x] Device detection
 - [x] ADB/Fastboot mode detection
+- [x] Single-slot / A-B boot detection
+- [x] Manual boot-layout override
+- [x] TWRP drag-and-drop input
+- [x] ROM drag-and-drop input
 - [x] Reboot actions
-- [ ] Realtime command log
+- [ ] Realtime process streaming
 
 ### v0.2 - Safe manual flashing
 
-- [ ] Select image file
+- [ ] Inspect dropped TWRP / ROM inputs
 - [ ] Read partition/device metadata
 - [ ] Validate target partition
+- [ ] Choose active/both slots for A/B devices
 - [ ] Command preview and confirmation
 - [ ] Flash progress and result handling
 
