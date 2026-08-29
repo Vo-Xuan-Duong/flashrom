@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use serde::Serialize;
 
 use crate::rom::{inspect_rom_inner, RomArtifact};
@@ -112,7 +110,10 @@ fn boot_steps(
                     required_mode: "Fastboot".into(),
                     command_preview: command(serial, partition, &artifact.path),
                     state: "resolved".into(),
-                    warning: Some("Both boot slots are selected. Verify that this is intended for the ROM.".into()),
+                    warning: Some(
+                        "Both boot slots are selected. Verify that this is intended for the ROM."
+                            .into(),
+                    ),
                 })
                 .collect(),
             warnings,
@@ -210,7 +211,9 @@ fn artifact_steps(
                 required_mode: "Unknown".into(),
                 command_preview: "No command generated".into(),
                 state: "unsupported".into(),
-                warning: Some("Image filename is not in the safe partition mapping allowlist.".into()),
+                warning: Some(
+                    "Image filename is not in the safe partition mapping allowlist.".into(),
+                ),
             }],
             vec![format!(
                 "{} is not mapped to a known partition and will not be auto-flashed.",
@@ -324,9 +327,8 @@ pub fn generate_flash_plan(
         rom_kind: inspection.kind,
         boot_layout,
         slot_strategy,
-        active_slot: active_slot.and_then(|value| {
-            normalized_slot(Some(&value)).map(|slot| slot.to_string())
-        }),
+        active_slot: active_slot
+            .and_then(|value| normalized_slot(Some(&value)).map(|slot| slot.to_string())),
         steps,
         warnings,
         ready_for_validation,
@@ -394,15 +396,5 @@ mod tests {
         assert_eq!(normalized_slot(Some("_A")), Some("a"));
         assert_eq!(normalized_slot(Some("b")), Some("b"));
         assert_eq!(normalized_slot(Some("x")), None);
-    }
-
-    #[test]
-    fn path_filename_helper_remains_standard() {
-        assert_eq!(
-            Path::new("C:/rom/boot.img")
-                .file_name()
-                .and_then(|value| value.to_str()),
-            Some("boot.img")
-        );
     }
 }
