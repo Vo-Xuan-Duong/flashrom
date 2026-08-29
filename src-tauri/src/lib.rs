@@ -2,6 +2,7 @@ mod android;
 mod partition;
 mod plan;
 mod process;
+mod recovery;
 mod rom;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,7 +15,8 @@ pub fn run() {
             android::factory_reset,
             rom::inspect_rom,
             plan::generate_flash_plan,
-            partition::inspect_partitions
+            partition::inspect_partitions,
+            recovery::adb_sideload
         ])
         .run(tauri::generate_context!())
         .expect("error while running FlashROM");
