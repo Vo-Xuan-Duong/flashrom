@@ -30,6 +30,21 @@ export interface ActionResult {
   output: string;
 }
 
+export interface RomArtifact {
+  name: string;
+  path: string;
+  kind: string;
+  size: number;
+}
+
+export interface RomInspection {
+  path: string;
+  kind: string;
+  size: number;
+  artifacts: RomArtifact[];
+  diagnostic: string;
+}
+
 export type RebootTarget = "android" | "bootloader" | "fastbootd" | "recovery";
 
 export function detectDevice(): Promise<DeviceSnapshot> {
@@ -46,4 +61,8 @@ export function bootTwrp(imagePath: string): Promise<ActionResult> {
 
 export function factoryReset(confirmation: string): Promise<ActionResult> {
   return invoke<ActionResult>("factory_reset", { confirmation });
+}
+
+export function inspectRom(path: string): Promise<RomInspection> {
+  return invoke<RomInspection>("inspect_rom", { path });
 }
