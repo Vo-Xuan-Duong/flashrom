@@ -1,5 +1,6 @@
 mod android;
 mod compatibility;
+mod execution_preview;
 mod final_plan;
 mod flash;
 mod partition;
@@ -21,6 +22,7 @@ pub fn run() {
             partition::inspect_partitions,
             compatibility::inspect_rom_compatibility,
             final_plan::resolve_final_flash_plan,
+            execution_preview::build_execution_preview,
             recovery::adb_sideload,
             flash::flash_image
         ])
