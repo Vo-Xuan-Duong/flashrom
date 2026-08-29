@@ -8,7 +8,7 @@ FlashROM is a Windows-first Android flashing utility built with **Rust + Tauri 2
 ## Current capabilities
 
 - Detect devices through ADB or Fastboot.
-- Distinguish Android, Recovery, classic Fastboot, and FastbootD when possible.
+- Distinguish Android, Recovery, ADB Sideload, classic Fastboot, and FastbootD when possible.
 - Detect single-slot vs A/B boot layouts.
 - Map single-slot boot to `boot`; A/B boot to `boot_a` / `boot_b`.
 - Manual boot-layout override: Auto / 1 partition / 2 partitions (A/B).
@@ -18,13 +18,16 @@ FlashROM is a Windows-first Android flashing utility built with **Rust + Tauri 2
 - Clean Data / Factory Reset using guarded `fastboot -w` and exact `WIPE` confirmation.
 - Analyze ROM input and classify ZIP, `payload.bin`, `super.img`, image files/folders, and common Fastboot ROM layouts.
 - Generate a non-executing Flash Plan Preview from known image filenames.
-- Choose active slot or both slots for resolved A/B boot images.
+- Choose active slot or both slots for A/B images.
 - Probe partition metadata read-only: slot support, size, logical/physical state, partition type, and recommended Fastboot mode.
+- Parse trusted local ROM product/codename metadata and compare it with the connected Fastboot product.
+- Resolve physical/logical and A/B partition targets into a device-validated Final Flash Plan.
+- Generate a full-ROM Execution Dry Run containing preflight checks, Fastboot/FastbootD mode transitions, future write previews, and post-write state checks.
 - ADB Sideload recovery ZIPs with realtime stdout/stderr logging after verifying the device is actually in `sideload` state.
 - Manually flash a fully resolved `.img` step with realtime output and backend safety checks.
 - Scope ADB/Fastboot actions to the detected serial.
 
-Automatic whole-ROM execution is **not enabled yet**. Unresolved partition targets, `payload.bin`, and compatibility-sensitive images such as `super.img` remain blocked until the remaining validation layers are complete.
+Automatic whole-ROM execution is **not enabled yet**. `payload.bin`, `super.img`, unresolved targets, product mismatches, unknown Fastboot mode, and any incomplete preflight remain blocked.
 
 ## Stack
 
@@ -97,7 +100,7 @@ Backend requirements:
 - device is available through classic Bootloader/Fastboot;
 - the detected serial is explicitly targeted.
 
-## ROM Analyzer and Flash Plan
+## ROM Analyzer and Flash Plan Preview
 
 ROM inputs are analyzed locally. Extracted directories are inspected at the top level plus a conventional `images/` directory.
 
@@ -128,7 +131,7 @@ Unknown image filenames are deliberately not auto-mapped.
 
 The Flash Plan Preview shows:
 
-- image → target partition;
+- image → candidate partition;
 - active-slot / both-slot strategy;
 - required Fastboot or FastbootD mode;
 - command preview;
@@ -146,6 +149,66 @@ partition-type:<target>
 ```
 
 The probe identifies A/B targets, physical vs logical partitions, target size, and the recommended mode.
+
+## ROM product / codename validation
+
+Final validation reads explicit local metadata when available, including:
+
+```text
+android-info.txt
+metadata
+images/android-info.txt
+images/metadata
+META-INF/com/android/metadata
+```
+
+Recognized device identity keys include `product`, `device`, `pre-device`, `post-device`, and `ro.product.device`. `board` is retained as supporting evidence but is not treated as equivalent to Fastboot `product` for automatic compatibility approval.
+
+The ROM is considered automatically compatible only when trusted identity metadata contains an exact normalized match for:
+
+```text
+fastboot getvar product
+```
+
+If ROM identity metadata is absent, Fastboot product is unavailable, or the values differ, automatic whole-ROM execution remains blocked.
+
+## Final Flash Plan
+
+The Final Flash Plan re-reads live device state instead of trusting an earlier UI preview. It validates:
+
+- ROM product/codename compatibility;
+- `unlocked: yes`;
+- current slot;
+- `snapshot-update-status` when reported;
+- `is-userspace` so Fastboot vs FastbootD is explicitly known;
+- target A/B layout;
+- physical vs logical state;
+- partition size;
+- image size vs target size.
+
+Resolved physical partitions become **Fastboot / phase 1** steps. Logical partitions become **FastbootD / phase 2** steps. If both classes are present, the plan records that a mode transition is required.
+
+`super.img` remains `manual_only` and prevents the Final Flash Plan from becoming automatically executable.
+
+## Full-ROM Execution Dry Run
+
+FlashROM can transform a ready Final Flash Plan into a non-executing dry run. The dry run contains:
+
+```text
+preflight
+↓
+mode transition if required
+↓
+revalidate step
+↓
+flash command preview
+↓
+post-write device-state check
+↓
+next step
+```
+
+The backend re-resolves the Final Flash Plan when building the dry run. It does **not** invoke `fastboot flash` for the full-ROM sequence. Automatic execution remains explicitly disabled until conservative partition ordering and stronger post-write verification rules are finalized.
 
 ## Guarded Manual Image Flash
 
@@ -217,6 +280,9 @@ Rust backend
         +-- ROM analyzer
         +-- Flash Plan Preview
         +-- read-only partition probe
+        +-- ROM product compatibility validator
+        +-- device-validated Final Flash Plan
+        +-- full-ROM Execution Dry Run
         +-- guarded manual image flash
         +-- guarded ADB sideload
         |
@@ -230,7 +296,7 @@ adb / fastboot
 
 - [x] Project bootstrap
 - [x] Device detection
-- [x] ADB/Fastboot/FastbootD detection
+- [x] ADB/Fastboot/FastbootD/Sideload detection
 - [x] Single-slot / A-B boot detection
 - [x] Manual boot-layout override
 - [x] Native TWRP/ROM drag-and-drop
@@ -246,21 +312,25 @@ adb / fastboot
 - [x] Flash Plan Preview
 - [x] Active/both boot-slot selection
 - [x] Read-only partition metadata probe
+- [x] Resolve non-boot A/B targets from live Fastboot metadata
+- [x] Validate ROM product/codename against the connected device
 - [x] Manual resolved-image flash with backend preflight
 - [x] Realtime flash output
 - [x] ADB Sideload ZIP flow
-- [ ] Resolve non-boot A/B targets automatically from probe results
-- [ ] Validate ROM product/codename against the connected device
 
 ### v0.3 - ROM Flash Wizard
 
 - [x] Scan extracted Fastboot ROM folders
 - [x] Classify common ROM input types
-- [x] Generate a preliminary flash plan
-- [ ] Parse ROM product/codename requirements
-- [ ] Finalize all physical and dynamic partition targets
+- [x] Generate preliminary Flash Plan Preview
+- [x] Parse trusted ROM product/codename requirements
+- [x] Finalize physical/logical and A/B partition targets
+- [x] Build a device-validated Final Flash Plan
+- [x] Build a non-executing multi-phase Execution Dry Run
+- [ ] Define conservative partition ordering policy
 - [ ] Safe ordered multi-step plan execution
-- [ ] Verify each step and final device state
+- [ ] Revalidate device state before every write
+- [ ] Verify each completed step and final device state
 - [ ] Optional Clean Data after a successful validated plan
 
 ### Later
@@ -268,9 +338,11 @@ adb / fastboot
 - Inspect ZIP contents without manual extraction
 - `payload.bin` extraction workflow
 - advanced `super.img` / dynamic partition tooling
+- stronger post-write verification where device support allows it
 - backup/restore helpers
 - device profiles
 - release builds and auto-update
+- commit reproducible `pnpm-lock.yaml` and `src-tauri/Cargo.lock`
 
 ## License
 
