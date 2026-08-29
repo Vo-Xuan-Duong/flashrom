@@ -11,33 +11,33 @@ use crate::{
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalFlashPlanStep {
-    image: String,
-    image_path: String,
-    image_size: u64,
-    base_partition: String,
-    partition: String,
-    partition_size: Option<u64>,
-    logical: Option<bool>,
-    required_mode: String,
-    phase: u8,
-    state: String,
-    command_preview: String,
-    warning: Option<String>,
+    pub(crate) image: String,
+    pub(crate) image_path: String,
+    pub(crate) image_size: u64,
+    pub(crate) base_partition: String,
+    pub(crate) partition: String,
+    pub(crate) partition_size: Option<u64>,
+    pub(crate) logical: Option<bool>,
+    pub(crate) required_mode: String,
+    pub(crate) phase: u8,
+    pub(crate) state: String,
+    pub(crate) command_preview: String,
+    pub(crate) warning: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalFlashPlan {
-    compatibility: RomCompatibility,
-    active_slot: Option<String>,
-    slot_strategy: String,
-    bootloader_unlocked: Option<bool>,
-    snapshot_update_status: Option<String>,
-    current_mode: String,
-    steps: Vec<FinalFlashPlanStep>,
-    warnings: Vec<String>,
-    requires_mode_switch: bool,
-    ready_for_execution: bool,
+    pub(crate) compatibility: RomCompatibility,
+    pub(crate) active_slot: Option<String>,
+    pub(crate) slot_strategy: String,
+    pub(crate) bootloader_unlocked: Option<bool>,
+    pub(crate) snapshot_update_status: Option<String>,
+    pub(crate) current_mode: String,
+    pub(crate) steps: Vec<FinalFlashPlanStep>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) requires_mode_switch: bool,
+    pub(crate) ready_for_execution: bool,
 }
 
 fn normalize_slot(value: Option<String>) -> Option<String> {
@@ -265,24 +265,23 @@ fn artifact_steps(
     }
 }
 
-#[tauri::command]
-pub fn resolve_final_flash_plan(
-    path: String,
-    serial: String,
-    slot_strategy: String,
+pub(crate) fn resolve_final_flash_plan_inner(
+    path: &str,
+    serial: &str,
+    slot_strategy: &str,
 ) -> Result<FinalFlashPlan, String> {
-    if !matches!(slot_strategy.as_str(), "active" | "both") {
+    if !matches!(slot_strategy, "active" | "both") {
         return Err("Slot strategy must be active or both.".into());
     }
 
-    let compatibility = inspect_compatibility_inner(&path, &serial)?;
-    let inspection = inspect_rom_inner(&path)?;
-    let active_slot = normalize_slot(getvar(&serial, "current-slot"));
-    let bootloader_unlocked = parse_yes_no(getvar(&serial, "unlocked"));
-    let snapshot_update_status = getvar(&serial, "snapshot-update-status")
+    let compatibility = inspect_compatibility_inner(path, serial)?;
+    let inspection = inspect_rom_inner(path)?;
+    let active_slot = normalize_slot(getvar(serial, "current-slot"));
+    let bootloader_unlocked = parse_yes_no(getvar(serial, "unlocked"));
+    let snapshot_update_status = getvar(serial, "snapshot-update-status")
         .map(|value| value.trim().to_lowercase())
         .filter(|value| !value.is_empty());
-    let current_mode = if parse_yes_no(getvar(&serial, "is-userspace")) == Some(true) {
+    let current_mode = if parse_yes_no(getvar(serial, "is-userspace")) == Some(true) {
         "FastbootD"
     } else {
         "Fastboot"
@@ -298,7 +297,7 @@ pub fn resolve_final_flash_plan(
     bases.sort();
     bases.dedup();
 
-    let partition_metadata = inspect_partitions_inner(&serial, bases)?
+    let partition_metadata = inspect_partitions_inner(serial, bases)?
         .into_iter()
         .map(|metadata| (metadata.base_partition.clone(), metadata))
         .collect::<BTreeMap<_, _>>();
@@ -308,9 +307,9 @@ pub fn resolve_final_flash_plan(
         steps.extend(artifact_steps(
             artifact,
             &partition_metadata,
-            &slot_strategy,
+            slot_strategy,
             active_slot.as_deref(),
-            &serial,
+            serial,
         ));
     }
 
@@ -361,7 +360,7 @@ pub fn resolve_final_flash_plan(
     Ok(FinalFlashPlan {
         compatibility,
         active_slot,
-        slot_strategy,
+        slot_strategy: slot_strategy.to_string(),
         bootloader_unlocked,
         snapshot_update_status,
         current_mode,
@@ -370,6 +369,15 @@ pub fn resolve_final_flash_plan(
         requires_mode_switch,
         ready_for_execution,
     })
+}
+
+#[tauri::command]
+pub fn resolve_final_flash_plan(
+    path: String,
+    serial: String,
+    slot_strategy: String,
+) -> Result<FinalFlashPlan, String> {
+    resolve_final_flash_plan_inner(&path, &serial, &slot_strategy)
 }
 
 #[cfg(test)]
