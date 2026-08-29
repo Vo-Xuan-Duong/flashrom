@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
+  bootTwrp,
   detectDevice,
+  factoryReset,
   rebootDevice,
+  type ActionResult,
   type BootLayout,
   type DeviceSnapshot,
   type RebootTarget,
@@ -29,6 +32,10 @@ function now() {
 
 function fileName(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+function quoteCommandPath(path: string) {
+  return `"${path.replaceAll('"', '\\"')}"`;
 }
 
 function partitionsFor(layout: BootLayout): string[] {
@@ -61,6 +68,7 @@ function App() {
   const [twrpPath, setTwrpPath] = useState<string | null>(null);
   const [romPath, setRomPath] = useState<string | null>(null);
   const [dragTarget, setDragTarget] = useState<DropTarget>(null);
+  const [wipeConfirmation, setWipeConfirmation] = useState("");
 
   const appendLog = useCallback((message: string) => {
     setLogs((current) => [...current.slice(-199), `[${now()}] ${message}`]);
@@ -149,6 +157,15 @@ function App() {
   const effectiveBootLayout: BootLayout =
     layoutSelection === "auto" ? device.bootLayout : layoutSelection;
   const effectiveBootPartitions = partitionsFor(effectiveBootLayout);
+  const isClassicFastboot = device.connected && device.tool === "fastboot" && device.mode === "Fastboot";
+
+  function logActionResult(result: ActionResult, successMessage: string) {
+    appendLog(`$ ${result.command}`);
+    if (result.output.trim()) appendLog(result.output.trim());
+    appendLog(
+      result.success ? successMessage : `Command failed with exit code ${result.status}.`,
+    );
+  }
 
   async function handleReboot(target: RebootTarget) {
     if (!device.connected || busy) return;
@@ -156,19 +173,46 @@ function App() {
     setBusy(true);
     try {
       const result = await rebootDevice(target);
-      appendLog(`$ ${result.command}`);
-      if (result.output.trim()) appendLog(result.output.trim());
-      appendLog(
-        result.success
-          ? `Reboot to ${target} requested.`
-          : `Command failed with exit code ${result.status}.`,
-      );
+      logActionResult(result, `Reboot to ${target} requested.`);
 
       if (result.success) {
         setDevice({ ...emptyDevice, diagnostic: "Device is changing mode. Refresh detection shortly." });
       }
     } catch (error) {
       appendLog(`Reboot failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleBootTwrp() {
+    if (!twrpPath || !isClassicFastboot || busy) return;
+
+    setBusy(true);
+    try {
+      const result = await bootTwrp(twrpPath);
+      logActionResult(result, "Temporary TWRP boot requested.");
+
+      if (result.success) {
+        setDevice({ ...emptyDevice, diagnostic: "TWRP is booting. Refresh after recovery starts." });
+      }
+    } catch (error) {
+      appendLog(`TWRP boot failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleFactoryReset() {
+    if (!isClassicFastboot || wipeConfirmation !== "WIPE" || busy) return;
+
+    setBusy(true);
+    try {
+      const result = await factoryReset(wipeConfirmation);
+      logActionResult(result, "Factory reset completed successfully.");
+      if (result.success) setWipeConfirmation("");
+    } catch (error) {
+      appendLog(`Factory reset failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setBusy(false);
     }
@@ -292,7 +336,7 @@ function App() {
             <p className="eyebrow">Flash inputs</p>
             <h2>Drop TWRP and ROM</h2>
           </div>
-          <p>Drop local files directly from Explorer. No flash command is executed at this stage.</p>
+          <p>Drop local files directly from Explorer. ROM flashing remains disabled until analysis is implemented.</p>
         </div>
 
         <div className="drop-grid">
@@ -335,10 +379,98 @@ function App() {
       <section className="panel">
         <div className="section-heading">
           <div>
+            <p className="eyebrow">Recovery tool</p>
+            <h2>Boot TWRP temporarily</h2>
+          </div>
+          <p>`fastboot boot` loads the selected image without permanently flashing the boot partition.</p>
+        </div>
+
+        <div className="operation-card">
+          <div className="operation-copy">
+            <strong>{twrpPath ? fileName(twrpPath) : "No TWRP image selected"}</strong>
+            <span>
+              {!twrpPath
+                ? "Drop a TWRP .img above first."
+                : !isClassicFastboot
+                  ? "Device must be in classic Fastboot / Bootloader mode."
+                  : "Ready to boot the recovery image into memory."}
+            </span>
+          </div>
+          <div className="command-preview">
+            <span>Command preview</span>
+            <code>
+              {device.serial && twrpPath
+                ? `fastboot -s ${device.serial} boot ${quoteCommandPath(twrpPath)}`
+                : "fastboot -s <serial> boot <twrp.img>"}
+            </code>
+          </div>
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={busy || !twrpPath || !isClassicFastboot}
+            onClick={() => void handleBootTwrp()}
+          >
+            Boot TWRP
+          </button>
+        </div>
+      </section>
+
+      <section className="panel danger-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow danger-eyebrow">Destructive operation</p>
+            <h2>Clean Data / Factory Reset</h2>
+          </div>
+          <p>This permanently removes user data. It does not depend on single-slot vs A/B boot layout.</p>
+        </div>
+
+        <div className="danger-copy">
+          <strong>Factory Reset executes `fastboot -w`.</strong>
+          <span>Applications, accounts, settings, app data and internal user data can be erased.</span>
+          <span>For safety, FlashROM requires classic Fastboot and the exact confirmation word below.</span>
+        </div>
+
+        <div className="command-preview command-preview-danger">
+          <span>Command preview</span>
+          <code>{device.serial ? `fastboot -s ${device.serial} -w` : "fastboot -s <serial> -w"}</code>
+        </div>
+
+        <div className="confirm-row">
+          <label htmlFor="wipe-confirmation">
+            Type <strong>WIPE</strong> to enable Factory Reset
+          </label>
+          <input
+            id="wipe-confirmation"
+            className="confirm-input"
+            value={wipeConfirmation}
+            onChange={(event) => setWipeConfirmation(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="WIPE"
+            disabled={busy}
+          />
+          <button
+            type="button"
+            className="button button-danger"
+            disabled={busy || !isClassicFastboot || wipeConfirmation !== "WIPE"}
+            onClick={() => void handleFactoryReset()}
+          >
+            Clean Data
+          </button>
+        </div>
+
+        {!isClassicFastboot && (
+          <p className="operation-note">Switch the device to Bootloader / classic Fastboot before Clean Data is enabled.</p>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
             <p className="eyebrow">Device actions</p>
             <h2>Reboot mode</h2>
           </div>
-          <p>These actions do not flash or erase partitions.</p>
+          <p>All reboot actions target the detected serial explicitly.</p>
         </div>
 
         <div className="action-grid">
@@ -365,13 +497,12 @@ function App() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Next milestone</p>
-            <h2>Safe flashing</h2>
+            <h2>ROM analyzer and flash plan</h2>
           </div>
         </div>
         <p>
-          TWRP and ROM inputs are captured now, but destructive operations remain disabled. The next layer will inspect
-          these inputs, validate the selected partition layout, preview the exact fastboot command, and require explicit
-          confirmation before flashing.
+          ROM input is captured but still not executed. The next layer will classify ZIP, fastboot ROM, payload.bin,
+          super.img and image folders, then build a validated flash plan before any partition write is enabled.
         </p>
       </section>
 
