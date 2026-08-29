@@ -39,3 +39,11 @@ export function detectDevice(): Promise<DeviceSnapshot> {
 export function rebootDevice(target: RebootTarget): Promise<ActionResult> {
   return invoke<ActionResult>("reboot_device", { target });
 }
+
+export function bootTwrp(imagePath: string): Promise<ActionResult> {
+  return invoke<ActionResult>("boot_twrp", { imagePath });
+}
+
+export function factoryReset(confirmation: string): Promise<ActionResult> {
+  return invoke<ActionResult>("factory_reset", { confirmation });
+}
