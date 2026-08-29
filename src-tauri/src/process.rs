@@ -15,13 +15,6 @@ impl AndroidTool {
             (Self::Fastboot, false) => "fastboot",
         }
     }
-
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::Adb => "adb",
-            Self::Fastboot => "fastboot",
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -68,7 +61,7 @@ fn tool_path(tool: AndroidTool) -> PathBuf {
 }
 
 fn quote_argument(value: &str) -> String {
-    if value.contains(char::is_whitespace) {
+    if value.chars().any(char::is_whitespace) {
         format!("\"{}\"", value.replace('"', "\\\""))
     } else {
         value.to_string()
