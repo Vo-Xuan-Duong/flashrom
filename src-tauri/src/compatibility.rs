@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, fs, path::{Path, PathBuf}};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::Serialize;
 
@@ -9,20 +13,20 @@ const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RomProductEvidence {
-    product: String,
-    source: String,
-    key: String,
+    pub(crate) product: String,
+    pub(crate) source: String,
+    pub(crate) key: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RomCompatibility {
-    device_product: Option<String>,
-    rom_products: Vec<String>,
-    evidence: Vec<RomProductEvidence>,
-    status: String,
-    safe_to_auto_flash: bool,
-    diagnostic: String,
+    pub(crate) device_product: Option<String>,
+    pub(crate) rom_products: Vec<String>,
+    pub(crate) evidence: Vec<RomProductEvidence>,
+    pub(crate) status: String,
+    pub(crate) safe_to_auto_flash: bool,
+    pub(crate) diagnostic: String,
 }
 
 fn normalize_product(value: &str) -> Option<String> {
@@ -34,9 +38,9 @@ fn normalize_product(value: &str) -> Option<String> {
         .to_lowercase();
 
     if value.is_empty()
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.'))
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+        })
     {
         return None;
     }
@@ -46,7 +50,9 @@ fn normalize_product(value: &str) -> Option<String> {
 
 fn split_products(value: &str) -> Vec<String> {
     value
-        .split(|character: char| matches!(character, '|' | ',' | ';') || character.is_whitespace())
+        .split(|character: char| {
+            matches!(character, '|' | ',' | ';') || character.is_whitespace()
+        })
         .filter_map(normalize_product)
         .collect()
 }
@@ -167,7 +173,10 @@ pub(crate) fn inspect_compatibility_inner(
     serial: &str,
 ) -> Result<RomCompatibility, String> {
     if serial.trim().is_empty() {
-        return Err("A detected Fastboot device serial is required for ROM compatibility validation.".into());
+        return Err(
+            "A detected Fastboot device serial is required for ROM compatibility validation."
+                .into(),
+        );
     }
 
     require_fastboot_serial(serial)?;
@@ -186,36 +195,37 @@ pub(crate) fn inspect_compatibility_inner(
         .into_iter()
         .collect::<Vec<_>>();
 
-    let (status, safe_to_auto_flash, diagnostic) = match (&device_product, rom_products.is_empty()) {
-        (None, _) => (
-            "unknown",
-            false,
-            "Fastboot did not report a usable device product. Automatic ROM flashing remains blocked."
-                .to_string(),
-        ),
-        (Some(device), true) => (
-            "unknown",
-            false,
-            format!(
-                "Device product is {device}, but no trusted ROM product/codename metadata was found. Automatic ROM flashing remains blocked."
+    let (status, safe_to_auto_flash, diagnostic) =
+        match (&device_product, rom_products.is_empty()) {
+            (None, _) => (
+                "unknown",
+                false,
+                "Fastboot did not report a usable device product. Automatic ROM flashing remains blocked."
+                    .to_string(),
             ),
-        ),
-        (Some(device), false) if rom_products.iter().any(|product| product == device) => (
-            "matched",
-            true,
-            format!(
-                "ROM metadata matches Fastboot product {device}. Compatibility validation passed."
+            (Some(device), true) => (
+                "unknown",
+                false,
+                format!(
+                    "Device product is {device}, but no trusted ROM product/codename metadata was found. Automatic ROM flashing remains blocked."
+                ),
             ),
-        ),
-        (Some(device), false) => (
-            "mismatch",
-            false,
-            format!(
-                "ROM metadata targets [{}], but the connected device reports product {device}. Flashing is blocked.",
-                rom_products.join(", ")
+            (Some(device), false) if rom_products.iter().any(|product| product == device) => (
+                "matched",
+                true,
+                format!(
+                    "ROM metadata matches Fastboot product {device}. Compatibility validation passed."
+                ),
             ),
-        ),
-    };
+            (Some(device), false) => (
+                "mismatch",
+                false,
+                format!(
+                    "ROM metadata targets [{}], but the connected device reports product {device}. Flashing is blocked.",
+                    rom_products.join(", ")
+                ),
+            ),
+        };
 
     Ok(RomCompatibility {
         device_product,
@@ -252,7 +262,10 @@ mod tests {
 
     #[test]
     fn parses_ota_device_metadata() {
-        let evidence = parse_metadata_text("ota-type=AB\npre-device=sunstone,moonstone\n", "metadata");
+        let evidence = parse_metadata_text(
+            "ota-type=AB\npre-device=sunstone,moonstone\n",
+            "metadata",
+        );
         assert_eq!(evidence.len(), 2);
     }
 
