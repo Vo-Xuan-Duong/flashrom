@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
+  adbSideload,
   generateFlashPlan,
   inspectPartitions,
   type BootLayout,
   type FlashPlan,
   type PartitionMetadata,
+  type ProcessOutputEvent,
   type SlotStrategy,
 } from "../lib/tauri";
 
@@ -42,6 +45,10 @@ function formatBytes(bytes: number | null) {
   return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }
 
+function quoteCommandPath(path: string) {
+  return `"${path.replaceAll('"', '\\"')}"`;
+}
+
 function FlashPlanPanel({
   romPath,
   bootLayout,
@@ -54,12 +61,34 @@ function FlashPlanPanel({
   const [partitionInfo, setPartitionInfo] = useState<PartitionMetadata[]>([]);
   const [busy, setBusy] = useState(false);
   const [probing, setProbing] = useState(false);
+  const [sideloadBusy, setSideloadBusy] = useState(false);
+
+  const isZip = Boolean(romPath?.toLowerCase().endsWith(".zip"));
 
   useEffect(() => {
     setPlan(null);
     setPartitionInfo([]);
     if (bootLayout !== "ab") setSlotStrategy("active");
   }, [romPath, bootLayout, activeSlot, serial]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listen<ProcessOutputEvent>("flashrom-process-output", (event) => {
+      if (event.payload.operationId !== "adb-sideload") return;
+      const data = event.payload.data.replace(/\r/g, "\n").trim();
+      if (data) onLog(`[ADB ${event.payload.stream}] ${data}`);
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [onLog]);
 
   const probeTargets = useMemo(() => {
     if (!plan) return [];
@@ -114,6 +143,26 @@ function FlashPlanPanel({
     }
   }
 
+  async function startSideload() {
+    if (!serial || !romPath || !isZip || sideloadBusy) return;
+
+    setSideloadBusy(true);
+    try {
+      onLog(`Starting ADB sideload for ${romPath}`);
+      const result = await adbSideload(serial, romPath);
+      onLog(`$ ${result.command}`);
+      onLog(
+        result.success
+          ? "ADB sideload completed successfully."
+          : `ADB sideload failed with exit code ${result.status}.`,
+      );
+    } catch (error) {
+      onLog(`ADB sideload failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSideloadBusy(false);
+    }
+  }
+
   return (
     <section className="panel">
       <div className="section-heading">
@@ -121,7 +170,7 @@ function FlashPlanPanel({
           <p className="eyebrow">Validation stage</p>
           <h2>Flash Plan Preview</h2>
         </div>
-        <p>No command in this section is executable yet. It only resolves expected targets and required modes.</p>
+        <p>No direct partition-flash command in this section is executable yet. It resolves targets and modes first.</p>
       </div>
 
       <div className="plan-controls">
@@ -288,6 +337,37 @@ function FlashPlanPanel({
               </div>
             )}
           </div>
+
+          {isZip && (
+            <div className="sideload-card">
+              <div className="partition-probe-heading">
+                <div>
+                  <span>Recovery ZIP flow</span>
+                  <strong>ADB Sideload</strong>
+                </div>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={!serial || sideloadBusy}
+                  onClick={() => void startSideload()}
+                >
+                  {sideloadBusy ? "Sideloading…" : "Start Sideload"}
+                </button>
+              </div>
+              <p>
+                In TWRP/Recovery, start ADB Sideload on the device first. FlashROM verifies that `adb devices` reports
+                state `sideload` before sending the ZIP.
+              </p>
+              <div className="command-preview">
+                <span>Command preview</span>
+                <code>
+                  {serial && romPath
+                    ? `adb -s ${serial} sideload ${quoteCommandPath(romPath)}`
+                    : "adb -s <serial> sideload <rom.zip>"}
+                </code>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
