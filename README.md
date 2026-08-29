@@ -3,22 +3,24 @@
 FlashROM is a Windows-first Android flashing utility built with **Rust + Tauri 2 + React + TypeScript**. The goal is to replace repetitive ADB/Fastboot command-line work with a safer GUI that keeps the executed commands and device state visible.
 
 > [!WARNING]
-> Flashing Android partitions can permanently erase data or make a device unbootable. FlashROM should validate device state, ROM compatibility, partition targets, and bootloader status before destructive operations are enabled.
+> Flashing Android partitions and wiping userdata can permanently erase data or make a device unbootable. FlashROM validates device state and requires explicit confirmation before destructive operations are enabled.
 
-## Initial scope
-
-The first milestone focuses on safe device-management primitives:
+## Current capabilities
 
 - Detect devices connected through ADB or Fastboot.
-- Distinguish Android, Bootloader/Fastboot, and FastbootD when possible.
+- Distinguish Android, Recovery, Bootloader/Fastboot, and FastbootD when possible.
 - Detect single-slot vs A/B boot layouts.
 - Map single-slot devices to `boot`, and A/B devices to `boot_a` / `boot_b`.
 - Allow a manual boot-layout override when device metadata is unreliable.
 - Read basic Fastboot metadata such as current slot and product.
 - Accept a TWRP `.img` and ROM package/folder through native Tauri drag-and-drop.
+- Temporarily boot a TWRP image with `fastboot boot` after validating the selected file and device mode.
+- Perform a guarded Factory Reset with `fastboot -w` after an exact `WIPE` confirmation.
 - Reboot between Android, Bootloader, FastbootD, and Recovery.
+- Scope actions to the detected device serial.
 - Keep ADB/Fastboot process execution isolated in the Rust backend.
-- Add flashing only after validation and flash-plan layers are in place.
+
+ROM partition flashing remains disabled until the analyzer and flash-plan validation layer is complete.
 
 ## Stack
 
@@ -85,7 +87,7 @@ The UI also exposes `Auto detect`, `1 partition`, and `2 partitions (A/B)` so th
 
 ## Flash inputs
 
-The desktop UI currently accepts native file drops:
+The desktop UI accepts native file drops:
 
 ```text
 TWRP
@@ -95,7 +97,35 @@ ROM
 └── ROM file or folder
 ```
 
-Dropping these inputs only stores their local paths. It does **not** execute `fastboot flash`, sideload, erase, or any other destructive command yet.
+The TWRP input can be used with the guarded temporary boot action:
+
+```text
+fastboot -s <serial> boot "<twrp.img>"
+```
+
+Requirements:
+
+- Device must be connected through classic Bootloader/Fastboot.
+- Selected path must exist.
+- Selected input must be an `.img` file.
+- The detected device serial is always included in the command.
+
+The ROM input is only stored at this stage. No ROM partition writes are enabled yet.
+
+## Clean Data / Factory Reset
+
+FlashROM exposes Factory Reset as a separate destructive operation:
+
+```text
+fastboot -s <serial> -w
+```
+
+Safety rules:
+
+- Device must be in classic Bootloader/Fastboot.
+- The backend requires the exact confirmation value `WIPE`.
+- The UI previews the exact command before enabling the action.
+- A/B layout does not create `userdata_a` or `userdata_b`; userdata is treated independently from the boot slot model.
 
 ## Architecture
 
@@ -109,7 +139,9 @@ Rust commands
         +-- Android device detection
         +-- single-slot / A-B detection
         +-- ADB/Fastboot process runner
-        +-- device-state validation (next)
+        +-- serial-scoped actions
+        +-- guarded TWRP boot
+        +-- guarded factory reset
         +-- ROM analyzer (next)
         +-- flash planner (next)
         |
@@ -129,21 +161,26 @@ adb / fastboot
 - [x] TWRP drag-and-drop input
 - [x] ROM drag-and-drop input
 - [x] Reboot actions
+- [x] Serial-scoped commands
 - [ ] Realtime process streaming
 
-### v0.2 - Safe manual flashing
+### v0.2 - Safe manual operations
 
-- [ ] Inspect dropped TWRP / ROM inputs
-- [ ] Read partition/device metadata
+- [x] TWRP image validation
+- [x] Temporary TWRP boot with command preview
+- [x] Clean Data / Factory Reset with explicit confirmation
+- [ ] Inspect dropped ROM inputs
+- [ ] Read broader partition/device metadata
 - [ ] Validate target partition
 - [ ] Choose active/both slots for A/B devices
-- [ ] Command preview and confirmation
+- [ ] Manual image flash command preview and confirmation
 - [ ] Flash progress and result handling
 
 ### v0.3 - ROM flash wizard
 
 - [ ] Scan ROM folder
 - [ ] Detect common image layouts
+- [ ] Detect recovery ZIP vs fastboot ROM vs `payload.bin`
 - [ ] Generate a flash plan
 - [ ] Validate device codename / A-B slot / dynamic partitions
 - [ ] Execute and verify the plan
