@@ -4,11 +4,13 @@ import {
   bootTwrp,
   detectDevice,
   factoryReset,
+  inspectRom,
   rebootDevice,
   type ActionResult,
   type BootLayout,
   type DeviceSnapshot,
   type RebootTarget,
+  type RomInspection,
 } from "./lib/tauri";
 
 type BootLayoutSelection = "auto" | "single" | "ab";
@@ -36,6 +38,29 @@ function fileName(path: string) {
 
 function quoteCommandPath(path: string) {
   return `"${path.replaceAll('"', '\\"')}"`;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function romKindLabel(kind: string) {
+  const labels: Record<string, string> = {
+    recovery_zip: "Recovery / OTA ZIP",
+    payload_bin: "payload.bin",
+    payload_package: "Payload package",
+    super_image: "super.img",
+    image: "Image file",
+    image_folder: "Image folder",
+    fastboot_rom: "Fastboot ROM",
+    directory: "Directory",
+    file: "File",
+  };
+  return labels[kind] ?? kind;
 }
 
 function partitionsFor(layout: BootLayout): string[] {
@@ -67,6 +92,8 @@ function App() {
   const [layoutSelection, setLayoutSelection] = useState<BootLayoutSelection>("auto");
   const [twrpPath, setTwrpPath] = useState<string | null>(null);
   const [romPath, setRomPath] = useState<string | null>(null);
+  const [romInfo, setRomInfo] = useState<RomInspection | null>(null);
+  const [romInspecting, setRomInspecting] = useState(false);
   const [dragTarget, setDragTarget] = useState<DropTarget>(null);
   const [wipeConfirmation, setWipeConfirmation] = useState("");
 
@@ -92,6 +119,26 @@ function App() {
       setBusy(false);
     }
   }, [appendLog]);
+
+  const inspectRomInput = useCallback(
+    async (path: string) => {
+      setRomPath(path);
+      setRomInfo(null);
+      setRomInspecting(true);
+      appendLog(`ROM input selected: ${path}`);
+
+      try {
+        const inspection = await inspectRom(path);
+        setRomInfo(inspection);
+        appendLog(inspection.diagnostic);
+      } catch (error) {
+        appendLog(`ROM analysis failed: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setRomInspecting(false);
+      }
+    },
+    [appendLog],
+  );
 
   useEffect(() => {
     void refresh();
@@ -131,8 +178,7 @@ function App() {
           return;
         }
 
-        setRomPath(path);
-        appendLog(`ROM input selected: ${path}`);
+        void inspectRomInput(path);
       })
       .then((stop) => {
         if (disposed) stop();
@@ -144,7 +190,7 @@ function App() {
       disposed = true;
       unlisten?.();
     };
-  }, [appendLog]);
+  }, [appendLog, inspectRomInput]);
 
   const statusClass = useMemo(() => {
     if (!device.connected) return "status-dot status-offline";
@@ -336,7 +382,7 @@ function App() {
             <p className="eyebrow">Flash inputs</p>
             <h2>Drop TWRP and ROM</h2>
           </div>
-          <p>Drop local files directly from Explorer. ROM flashing remains disabled until analysis is implemented.</p>
+          <p>ROM inputs are analyzed locally. Partition writes remain disabled until a validated flash plan exists.</p>
         </div>
 
         <div className="drop-grid">
@@ -365,15 +411,56 @@ function App() {
             <div className="drop-copy">
               <strong>ROM package</strong>
               <span>{romPath ? fileName(romPath) : "Drop ROM file or folder here"}</span>
-              <small>{romPath ?? "ZIP / fastboot ROM / payload package"}</small>
+              <small>{romInspecting ? "Analyzing…" : romPath ?? "ZIP / fastboot ROM / payload package"}</small>
             </div>
             {romPath && (
-              <button type="button" className="text-button" onClick={() => setRomPath(null)}>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setRomPath(null);
+                  setRomInfo(null);
+                }}
+              >
                 Clear
               </button>
             )}
           </div>
         </div>
+
+        {romInfo && (
+          <div className="rom-inspection">
+            <div className="rom-summary">
+              <div>
+                <span>Detected type</span>
+                <strong>{romKindLabel(romInfo.kind)}</strong>
+              </div>
+              <div>
+                <span>Inspected size</span>
+                <strong>{formatBytes(romInfo.size)}</strong>
+              </div>
+              <div>
+                <span>Artifacts</span>
+                <strong>{romInfo.artifacts.length}</strong>
+              </div>
+            </div>
+            <p>{romInfo.diagnostic}</p>
+            {romInfo.artifacts.length > 0 && (
+              <div className="artifact-list">
+                {romInfo.artifacts.slice(0, 16).map((item) => (
+                  <div className="artifact-row" key={item.path}>
+                    <code>{item.name}</code>
+                    <span>{item.kind}</span>
+                    <span>{formatBytes(item.size)}</span>
+                  </div>
+                ))}
+                {romInfo.artifacts.length > 16 && (
+                  <div className="artifact-more">+ {romInfo.artifacts.length - 16} more file(s)</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="panel">
@@ -497,12 +584,13 @@ function App() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">Next milestone</p>
-            <h2>ROM analyzer and flash plan</h2>
+            <h2>Validated flash plan</h2>
           </div>
         </div>
         <p>
-          ROM input is captured but still not executed. The next layer will classify ZIP, fastboot ROM, payload.bin,
-          super.img and image folders, then build a validated flash plan before any partition write is enabled.
+          ROM classification is now local and automatic. The next layer will map detected images to supported
+          partitions, validate device compatibility and slot targets, then require a complete command preview before
+          partition writes are enabled.
         </p>
       </section>
 
