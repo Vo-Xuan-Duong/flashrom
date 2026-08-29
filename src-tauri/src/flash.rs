@@ -101,8 +101,8 @@ pub async fn flash_image(
     }
 
     let image = Path::new(&image_path);
-    let metadata = fs::metadata(image)
-        .map_err(|error| format!("Unable to access selected image: {error}"))?;
+    let metadata =
+        fs::metadata(image).map_err(|error| format!("Unable to access selected image: {error}"))?;
     if !metadata.is_file() {
         return Err("Selected image path is not a regular file.".into());
     }
@@ -132,11 +132,8 @@ pub async fn flash_image(
         }
     }
 
-    let partition_size = parse_size(getvar(
-        &serial,
-        &format!("partition-size:{partition}"),
-    ))
-    .ok_or_else(|| format!("Partition {partition} does not report a usable partition size."))?;
+    let partition_size = parse_size(getvar(&serial, &format!("partition-size:{partition}")))
+        .ok_or_else(|| format!("Partition {partition} does not report a usable partition size."))?;
 
     let image_size = metadata.len();
     if image_size > partition_size {
@@ -145,8 +142,10 @@ pub async fn flash_image(
         ));
     }
 
-    let logical = parse_yes_no(getvar(&serial, &format!("is-logical:{partition}")))
-        .ok_or_else(|| format!("Logical/physical status for {partition} could not be confirmed."))?;
+    let logical =
+        parse_yes_no(getvar(&serial, &format!("is-logical:{partition}"))).ok_or_else(|| {
+            format!("Logical/physical status for {partition} could not be confirmed.")
+        })?;
     let userspace = parse_yes_no(getvar(&serial, "is-userspace")).unwrap_or(false);
 
     let required_mode = if logical { "FastbootD" } else { "Fastboot" };
