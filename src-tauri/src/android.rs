@@ -276,15 +276,9 @@ pub fn reboot_device(target: String) -> Result<ActionResult, String> {
 
     let output = match (transport, target.as_str()) {
         ("adb", "android") => run(AndroidTool::Adb, &["-s", &serial, "reboot"]),
-        ("adb", "bootloader") => run(
-            AndroidTool::Adb,
-            &["-s", &serial, "reboot", "bootloader"],
-        ),
+        ("adb", "bootloader") => run(AndroidTool::Adb, &["-s", &serial, "reboot", "bootloader"]),
         ("adb", "fastbootd") => run(AndroidTool::Adb, &["-s", &serial, "reboot", "fastboot"]),
-        ("adb", "recovery") => run(
-            AndroidTool::Adb,
-            &["-s", &serial, "reboot", "recovery"],
-        ),
+        ("adb", "recovery") => run(AndroidTool::Adb, &["-s", &serial, "reboot", "recovery"]),
         ("fastboot", "android") => run(AndroidTool::Fastboot, &["-s", &serial, "reboot"]),
         ("fastboot", "bootloader") => run(
             AndroidTool::Fastboot,
