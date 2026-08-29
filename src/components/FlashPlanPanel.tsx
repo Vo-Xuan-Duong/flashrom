@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   generateFlashPlan,
+  inspectPartitions,
   type BootLayout,
   type FlashPlan,
+  type PartitionMetadata,
   type SlotStrategy,
 } from "../lib/tauri";
 
@@ -25,6 +27,21 @@ function stateLabel(state: string) {
   return labels[state] ?? state;
 }
 
+function basePartition(image: string, partition: string) {
+  if (image.toLowerCase() === "boot.img") return "boot";
+  if (partition === "unknown") return null;
+  return partition.replace(/<\?>$/, "").replace(/_[ab]$/, "");
+}
+
+function formatBytes(bytes: number | null) {
+  if (bytes === null) return "Unknown";
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
 function FlashPlanPanel({
   romPath,
   bootLayout,
@@ -34,17 +51,32 @@ function FlashPlanPanel({
 }: FlashPlanPanelProps) {
   const [slotStrategy, setSlotStrategy] = useState<SlotStrategy>("active");
   const [plan, setPlan] = useState<FlashPlan | null>(null);
+  const [partitionInfo, setPartitionInfo] = useState<PartitionMetadata[]>([]);
   const [busy, setBusy] = useState(false);
+  const [probing, setProbing] = useState(false);
 
   useEffect(() => {
     setPlan(null);
+    setPartitionInfo([]);
     if (bootLayout !== "ab") setSlotStrategy("active");
   }, [romPath, bootLayout, activeSlot, serial]);
+
+  const probeTargets = useMemo(() => {
+    if (!plan) return [];
+    return Array.from(
+      new Set(
+        plan.steps
+          .map((step) => basePartition(step.image, step.partition))
+          .filter((partition): partition is string => Boolean(partition)),
+      ),
+    );
+  }, [plan]);
 
   async function buildPlan() {
     if (!romPath || busy) return;
 
     setBusy(true);
+    setPartitionInfo([]);
     try {
       const result = await generateFlashPlan({
         path: romPath,
@@ -63,6 +95,22 @@ function FlashPlanPanel({
       onLog(`Flash plan generation failed: ${message}`);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function probeDevicePartitions() {
+    if (!serial || probeTargets.length === 0 || probing) return;
+
+    setProbing(true);
+    try {
+      const result = await inspectPartitions(serial, probeTargets);
+      setPartitionInfo(result);
+      onLog(`Partition metadata read successfully for ${result.length} partition(s).`);
+    } catch (error) {
+      setPartitionInfo([]);
+      onLog(`Partition probe failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -89,6 +137,7 @@ function FlashPlanPanel({
             onClick={() => {
               setSlotStrategy("active");
               setPlan(null);
+              setPartitionInfo([]);
             }}
             disabled={!romPath}
           >
@@ -101,6 +150,7 @@ function FlashPlanPanel({
             onClick={() => {
               setSlotStrategy("both");
               setPlan(null);
+              setPartitionInfo([]);
             }}
             disabled={!romPath || bootLayout !== "ab"}
           >
@@ -184,6 +234,58 @@ function FlashPlanPanel({
                   {step.warning && <p className="plan-step-warning">{step.warning}</p>}
                 </article>
               ))
+            )}
+          </div>
+
+          <div className="partition-probe">
+            <div className="partition-probe-heading">
+              <div>
+                <span>Device validation</span>
+                <strong>Partition metadata probe</strong>
+              </div>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!serial || probeTargets.length === 0 || probing}
+                onClick={() => void probeDevicePartitions()}
+              >
+                {probing ? "Probing…" : "Probe Partitions"}
+              </button>
+            </div>
+            <p>
+              Read-only Fastboot checks: has-slot, partition size, logical status and partition type. The device must be
+              in Bootloader/Fastboot or FastbootD.
+            </p>
+
+            {partitionInfo.length > 0 && (
+              <div className="partition-metadata-list">
+                {partitionInfo.map((partition) => (
+                  <article key={partition.basePartition} className="partition-metadata-card">
+                    <div className="partition-metadata-title">
+                      <code>{partition.basePartition}</code>
+                      <span>
+                        {partition.hasSlot === true
+                          ? "A/B"
+                          : partition.hasSlot === false
+                            ? "Single"
+                            : "Slot unknown"}
+                      </span>
+                    </div>
+                    <p>{partition.diagnostic}</p>
+                    <div className="partition-targets">
+                      {partition.targets.map((target) => (
+                        <div className="partition-target-row" key={target.name}>
+                          <code>{target.name}</code>
+                          <span>{target.logical === true ? "Logical" : target.logical === false ? "Physical" : "Unknown"}</span>
+                          <span>{target.partitionType ?? "type ?"}</span>
+                          <span>{formatBytes(target.sizeBytes)}</span>
+                          <strong>{target.recommendedMode}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
             )}
           </div>
         </div>
