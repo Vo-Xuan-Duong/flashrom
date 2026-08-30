@@ -225,6 +225,28 @@ export interface RestoreProfile {
   diagnostic: string;
 }
 
+export interface RestoreProfileConfigApp {
+  packageName: string;
+  installerPackage: string | null;
+  sourceKind: string;
+  restoreStrategy: RestoreStrategy;
+  enabled: boolean;
+}
+
+export interface RestoreProfileConfig {
+  version: number;
+  deviceProduct: string | null;
+  androidRelease: string | null;
+  sdkLevel: string | null;
+  apps: RestoreProfileConfigApp[];
+}
+
+export interface RestoreProfileSaveResult {
+  path: string;
+  appCount: number;
+  diagnostic: string;
+}
+
 export interface ApkBackupFile {
   remotePath: string;
   localPath: string;
@@ -345,6 +367,17 @@ export function buildExecutionGuard(options: {
 
 export function scanRestoreProfile(serial: string): Promise<RestoreProfile> {
   return invoke<RestoreProfile>("scan_restore_profile", { serial });
+}
+
+export function saveRestoreProfile(
+  directory: string,
+  profile: RestoreProfileConfig,
+): Promise<RestoreProfileSaveResult> {
+  return invoke<RestoreProfileSaveResult>("save_restore_profile", { directory, profile });
+}
+
+export function loadRestoreProfile(directory: string): Promise<RestoreProfileConfig> {
+  return invoke<RestoreProfileConfig>("load_restore_profile", { directory });
 }
 
 export function backupRestoreApks(options: {
