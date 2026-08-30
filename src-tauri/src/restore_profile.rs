@@ -69,7 +69,10 @@ fn validate_profile(profile: &RestoreProfileConfig) -> Result<(), String> {
 
     for app in &profile.apps {
         if !safe_package_name(&app.package_name) {
-            return Err(format!("Unsafe package name in restore profile: {}", app.package_name));
+            return Err(format!(
+                "Unsafe package name in restore profile: {}",
+                app.package_name
+            ));
         }
         if !safe_optional_package(app.installer_package.as_deref()) {
             return Err(format!(
@@ -137,7 +140,10 @@ pub fn load_restore_profile(directory: String) -> Result<RestoreProfileConfig, S
     let metadata = fs::metadata(&path)
         .map_err(|error| format!("Restore profile not found at {}: {error}", path.display()))?;
     if !metadata.is_file() {
-        return Err(format!("Restore profile path is not a file: {}", path.display()));
+        return Err(format!(
+            "Restore profile path is not a file: {}",
+            path.display()
+        ));
     }
     if metadata.len() > MAX_PROFILE_BYTES {
         return Err("Restore profile exceeds the 2 MiB safety limit.".into());
