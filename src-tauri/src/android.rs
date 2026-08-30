@@ -138,8 +138,8 @@ fn adb_snapshot(serial: String, state: String) -> DeviceSnapshot {
     let slot = adb_prop(&serial, "ro.boot.slot_suffix")
         .and_then(|value| normalize_slot(&value))
         .or_else(|| adb_prop(&serial, "ro.boot.slot").and_then(|value| normalize_slot(&value)));
-    let ab_update = adb_prop(&serial, "ro.build.ab_update")
-        .map(|value| value.eq_ignore_ascii_case("true"));
+    let ab_update =
+        adb_prop(&serial, "ro.build.ab_update").map(|value| value.eq_ignore_ascii_case("true"));
     let is_ab = slot.as_ref().map(|_| true).or(ab_update);
     let (boot_layout, boot_partitions) = boot_partition_info(is_ab);
 
@@ -414,7 +414,10 @@ pub fn factory_reset(
 
 #[cfg(test)]
 mod tests {
-    use super::{boot_partition_info, fastboot_var, normalize_slot, parse_adb_devices, parse_fastboot_devices};
+    use super::{
+        boot_partition_info, fastboot_var, normalize_slot, parse_adb_devices,
+        parse_fastboot_devices,
+    };
     use crate::process::CommandOutput;
 
     #[test]
