@@ -2,8 +2,10 @@ mod android;
 mod compatibility;
 mod execution_guard;
 mod execution_preview;
+mod executor;
 mod final_plan;
 mod flash;
+mod operation;
 mod ordering;
 mod partition;
 mod plan;
@@ -16,8 +18,10 @@ mod rom;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(operation::OperationManager::default())
         .invoke_handler(tauri::generate_handler![
             android::detect_device,
+            android::list_devices,
             android::reboot_device,
             android::boot_twrp,
             android::factory_reset,
@@ -28,6 +32,8 @@ pub fn run() {
             final_plan::resolve_final_flash_plan,
             execution_preview::build_execution_preview,
             execution_guard::build_execution_guard,
+            executor::execute_full_rom,
+            operation::get_operation_status,
             restore::scan_restore_profile,
             restore::backup_restore_apks,
             restore::restore_local_apks,
