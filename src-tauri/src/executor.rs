@@ -185,7 +185,11 @@ fn transition_mode(
     let reboot_target = match target {
         "Fastboot" => "bootloader",
         "FastbootD" => "fastboot",
-        _ => return Err(format!("Unsupported executor mode transition target: {target}")),
+        _ => {
+            return Err(format!(
+                "Unsupported executor mode transition target: {target}"
+            ))
+        }
     };
     let stream_id = format!("{operation_id}-mode-{}", target.to_lowercase());
     let output = run_streaming(
@@ -264,10 +268,7 @@ fn revalidate_step(
         ));
     }
 
-    let live_logical = parse_yes_no(getvar(
-        serial,
-        &format!("is-logical:{}", guarded.partition),
-    ));
+    let live_logical = parse_yes_no(getvar(serial, &format!("is-logical:{}", guarded.partition)));
     if live_logical != expected.logical {
         return Err(format!(
             "Logical/physical metadata changed for {}.",
@@ -359,7 +360,9 @@ fn execute_inner(
 
     let expected_steps = order_final_steps(&guard.final_plan.steps)?;
     if expected_steps.len() != guard.steps.len() || expected_steps.is_empty() {
-        return Err("Execution Guard step count does not match the ordered Final Flash Plan.".into());
+        return Err(
+            "Execution Guard step count does not match the ordered Final Flash Plan.".into(),
+        );
     }
 
     let started = now_unix_ms();
@@ -395,7 +398,8 @@ fn execute_inner(
         clean_data_requested: clean_data_after,
         reboot_requested: reboot_after,
         steps: results.clone(),
-        diagnostic: "Full-ROM execution started after Final Plan and SHA-256 Guard validation.".into(),
+        diagnostic: "Full-ROM execution started after Final Plan and SHA-256 Guard validation."
+            .into(),
     };
     write_journal(&journal_path, &mut journal)?;
 
@@ -404,13 +408,9 @@ fn execute_inner(
 
     for (index, (expected, guarded)) in expected_steps.iter().zip(guard.steps.iter()).enumerate() {
         if mode != guarded.required_mode {
-            if let Err(error) = transition_mode(
-                &app,
-                &serial,
-                &mode,
-                &guarded.required_mode,
-                &operation_id,
-            ) {
+            if let Err(error) =
+                transition_mode(&app, &serial, &mode, &guarded.required_mode, &operation_id)
+            {
                 results[index].status = "failed".into();
                 results[index].diagnostic = error.clone();
                 return Ok(failed_report(
@@ -445,7 +445,8 @@ fn execute_inner(
         }
 
         results[index].status = "running".into();
-        results[index].diagnostic = "Pre-write validation passed; fastboot flash is running.".into();
+        results[index].diagnostic =
+            "Pre-write validation passed; fastboot flash is running.".into();
         journal.steps = results.clone();
         journal.diagnostic = format!("Flashing {}.", guarded.partition);
         write_journal(&journal_path, &mut journal)?;
@@ -516,7 +517,8 @@ fn execute_inner(
 
         results[index].status = "success".into();
         results[index].diagnostic =
-            "Fastboot reported success and the expected device/partition state remained available.".into();
+            "Fastboot reported success and the expected device/partition state remained available."
+                .into();
         journal.steps = results.clone();
         journal.diagnostic = format!("Completed {}.", guarded.partition);
         write_journal(&journal_path, &mut journal)?;
@@ -531,7 +533,9 @@ fn execute_inner(
                     results,
                     clean_data_performed,
                     false,
-                    format!("ROM flashing completed, but Clean Data mode transition failed: {error}"),
+                    format!(
+                        "ROM flashing completed, but Clean Data mode transition failed: {error}"
+                    ),
                 ));
             }
             mode = "Fastboot".into();
@@ -587,8 +591,9 @@ fn execute_inner(
     } else {
         require_fastboot_serial(&serial)?;
         if let Some(expected_product) = product.as_deref() {
-            let live_product = getvar(&serial, "product")
-                .ok_or_else(|| "Final Fastboot product check did not return a value.".to_string())?;
+            let live_product = getvar(&serial, "product").ok_or_else(|| {
+                "Final Fastboot product check did not return a value.".to_string()
+            })?;
             if !live_product.eq_ignore_ascii_case(expected_product) {
                 return Ok(failed_report(
                     &journal_path,
