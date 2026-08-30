@@ -87,7 +87,9 @@ fn sha256_file(path: &str, expected_size: u64) -> Result<String, String> {
     let metadata = std::fs::metadata(path)
         .map_err(|error| format!("Unable to read image metadata for {path}: {error}"))?;
     if !metadata.is_file() {
-        return Err(format!("Execution guard image is not a regular file: {path}"));
+        return Err(format!(
+            "Execution guard image is not a regular file: {path}"
+        ));
     }
     if metadata.len() != expected_size {
         return Err(format!(
@@ -129,8 +131,9 @@ pub(crate) fn build_execution_guard_inner(
             steps: Vec::new(),
             state_stable_during_hashing: false,
             ready_for_executor: false,
-            diagnostic: "Execution guard stopped because the Final Flash Plan is not ready for execution."
-                .into(),
+            diagnostic:
+                "Execution guard stopped because the Final Flash Plan is not ready for execution."
+                    .into(),
         });
     }
 
@@ -203,7 +206,10 @@ pub async fn build_execution_guard(
 mod tests {
     use super::{plan_signature, sha256_file};
     use crate::{compatibility::RomCompatibility, final_plan::FinalFlashPlan};
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn hashes_file_with_sha256() {
@@ -213,8 +219,8 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("flashrom-hash-{unique}.img"));
         fs::write(&path, b"abc").expect("test image should be written");
-        let digest = sha256_file(path.to_str().expect("utf8 temp path"), 3)
-            .expect("hash should succeed");
+        let digest =
+            sha256_file(path.to_str().expect("utf8 temp path"), 3).expect("hash should succeed");
         fs::remove_file(path).ok();
         assert_eq!(
             digest,
