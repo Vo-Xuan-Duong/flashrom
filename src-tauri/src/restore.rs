@@ -609,19 +609,20 @@ pub async fn restore_local_apks(
             match run_streaming(&app, &operation_id, AndroidTool::Adb, &refs) {
                 Ok(output) => {
                     let verified = output.success() && package_is_installed(&serial, package);
+                    let diagnostic = if verified {
+                        "APK install completed and package presence was verified.".into()
+                    } else {
+                        format!(
+                            "APK install did not verify successfully: {}",
+                            output.combined_output()
+                        )
+                    };
                     results.push(LocalRestorePackageResult {
                         package_name: package.clone(),
                         success: verified,
                         apk_count: apk_strings.len(),
                         command: Some(output.command),
-                        diagnostic: if verified {
-                            "APK install completed and package presence was verified.".into()
-                        } else {
-                            format!(
-                                "APK install did not verify successfully: {}",
-                                output.combined_output()
-                            )
-                        },
+                        diagnostic,
                     });
                 }
                 Err(error) => results.push(LocalRestorePackageResult {
