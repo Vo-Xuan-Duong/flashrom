@@ -2,7 +2,10 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::process::{run, run_streaming, AndroidTool, CommandOutput};
+use crate::{
+    operation::OperationManager,
+    process::{run, run_streaming, AndroidTool, CommandOutput},
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +42,7 @@ fn adb_state(serial: &str) -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn adb_sideload(
     app: tauri::AppHandle,
+    manager: tauri::State<'_, OperationManager>,
     serial: String,
     zip_path: String,
 ) -> Result<StreamingActionResult, String> {
@@ -69,7 +73,9 @@ pub async fn adb_sideload(
         ));
     }
 
+    let permit = manager.inner().clone().acquire("adb-sideload", &serial)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
         let output = run_streaming(
             &app,
             "adb-sideload",
