@@ -5,6 +5,7 @@ export type DeviceMode =
   | "Recovery"
   | "Fastboot"
   | "FastbootD"
+  | "Fastboot Unknown"
   | "ADB Sideload"
   | "ADB Unauthorized"
   | "ADB Offline"
@@ -50,6 +51,13 @@ export interface ProcessOutputEvent {
   operationId: string;
   stream: "stdout" | "stderr" | string;
   data: string;
+}
+
+export interface OperationStatus {
+  active: boolean;
+  kind: string | null;
+  serial: string | null;
+  startedUnixMs: number | null;
 }
 
 export interface RomArtifact {
@@ -199,6 +207,27 @@ export interface ExecutionGuardReport {
   diagnostic: string;
 }
 
+export interface FullRomStepResult {
+  index: number;
+  image: string;
+  partition: string;
+  requiredMode: string;
+  status: "pending" | "running" | "success" | "failed" | string;
+  command: string | null;
+  exitCode: number | null;
+  diagnostic: string;
+}
+
+export interface FullRomExecutionReport {
+  operationId: string;
+  success: boolean;
+  journalPath: string;
+  steps: FullRomStepResult[];
+  cleanDataPerformed: boolean;
+  rebootRequested: boolean;
+  diagnostic: string;
+}
+
 export interface RestoreApp {
   packageName: string;
   installerPackage: string | null;
@@ -301,16 +330,24 @@ export function detectDevice(): Promise<DeviceSnapshot> {
   return invoke<DeviceSnapshot>("detect_device");
 }
 
-export function rebootDevice(target: RebootTarget): Promise<ActionResult> {
-  return invoke<ActionResult>("reboot_device", { target });
+export function listDevices(): Promise<DeviceSnapshot[]> {
+  return invoke<DeviceSnapshot[]>("list_devices");
 }
 
-export function bootTwrp(imagePath: string): Promise<ActionResult> {
-  return invoke<ActionResult>("boot_twrp", { imagePath });
+export function rebootDevice(target: RebootTarget, serial: string): Promise<ActionResult> {
+  return invoke<ActionResult>("reboot_device", { target, serial });
 }
 
-export function factoryReset(confirmation: string): Promise<ActionResult> {
-  return invoke<ActionResult>("factory_reset", { confirmation });
+export function bootTwrp(imagePath: string, serial: string): Promise<ActionResult> {
+  return invoke<ActionResult>("boot_twrp", { imagePath, serial });
+}
+
+export function factoryReset(confirmation: string, serial: string): Promise<ActionResult> {
+  return invoke<ActionResult>("factory_reset", { confirmation, serial });
+}
+
+export function getOperationStatus(): Promise<OperationStatus> {
+  return invoke<OperationStatus>("get_operation_status");
 }
 
 export function inspectRom(path: string): Promise<RomInspection> {
@@ -363,6 +400,17 @@ export function buildExecutionGuard(options: {
   slotStrategy: SlotStrategy;
 }): Promise<ExecutionGuardReport> {
   return invoke<ExecutionGuardReport>("build_execution_guard", options);
+}
+
+export function executeFullRom(options: {
+  path: string;
+  serial: string;
+  slotStrategy: SlotStrategy;
+  confirmation: string;
+  cleanDataAfter: boolean;
+  rebootAfter: boolean;
+}): Promise<FullRomExecutionReport> {
+  return invoke<FullRomExecutionReport>("execute_full_rom", options);
 }
 
 export function scanRestoreProfile(serial: string): Promise<RestoreProfile> {
