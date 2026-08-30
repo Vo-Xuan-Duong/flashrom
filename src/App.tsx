@@ -4,9 +4,9 @@ import FinalPlanPanel from "./components/FinalPlanPanel";
 import FlashPlanPanel from "./components/FlashPlanPanel";
 import {
   bootTwrp,
-  detectDevice,
   factoryReset,
   inspectRom,
+  listDevices,
   rebootDevice,
   type ActionResult,
   type BootLayout,
@@ -88,7 +88,8 @@ function dropTargetAt(position: { x: number; y: number }): DropTarget {
 }
 
 function App() {
-  const [device, setDevice] = useState<DeviceSnapshot>(emptyDevice);
+  const [devices, setDevices] = useState<DeviceSnapshot[]>([]);
+  const [selectedSerial, setSelectedSerial] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [layoutSelection, setLayoutSelection] = useState<BootLayoutSelection>("auto");
@@ -103,20 +104,48 @@ function App() {
     setLogs((current) => [...current.slice(-199), `[${now()}] ${message}`]);
   }, []);
 
+  const device = useMemo(() => {
+    const selected = selectedSerial
+      ? devices.find((item) => item.serial === selectedSerial)
+      : undefined;
+    if (selected) return selected;
+    if (devices.length === 1) return devices[0];
+    if (devices.length > 1) {
+      return {
+        ...emptyDevice,
+        diagnostic: `${devices.length} devices detected. Select the exact serial before running actions.`,
+      };
+    }
+    return {
+      ...emptyDevice,
+      diagnostic: "ADB and Fastboot are available, but no device is currently selected.",
+    };
+  }, [devices, selectedSerial]);
+
   const refresh = useCallback(async () => {
     setBusy(true);
     try {
-      const snapshot = await detectDevice();
-      setDevice(snapshot);
-      appendLog(
-        snapshot.connected
-          ? `Detected ${snapshot.serial ?? "device"} via ${snapshot.tool ?? "unknown"} (${snapshot.mode}); boot layout: ${snapshot.bootLayout}.`
-          : `No device detected. ${snapshot.diagnostic}`,
-      );
+      const found = await listDevices();
+      setDevices(found);
+      setSelectedSerial((current) => {
+        if (current && found.some((item) => item.serial === current)) return current;
+        return found.length === 1 ? found[0].serial : null;
+      });
+      if (found.length === 0) {
+        appendLog("No ADB/Fastboot device detected.");
+      } else if (found.length === 1) {
+        const only = found[0];
+        appendLog(
+          `Detected ${only.serial ?? "device"} via ${only.tool ?? "unknown"} (${only.mode}); boot layout: ${only.bootLayout}.`,
+        );
+      } else {
+        appendLog(`Detected ${found.length} devices. Select an explicit serial before protected actions are enabled.`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       appendLog(`Device detection failed: ${message}`);
-      setDevice({ ...emptyDevice, diagnostic: message });
+      setDevices([]);
+      setSelectedSerial(null);
     } finally {
       setBusy(false);
     }
@@ -216,15 +245,16 @@ function App() {
   }
 
   async function handleReboot(target: RebootTarget) {
-    if (!device.connected || busy) return;
+    if (!device.connected || !device.serial || busy) return;
 
     setBusy(true);
     try {
-      const result = await rebootDevice(target);
+      const result = await rebootDevice(target, device.serial);
       logActionResult(result, `Reboot to ${target} requested.`);
 
       if (result.success) {
-        setDevice({ ...emptyDevice, diagnostic: "Device is changing mode. Refresh detection shortly." });
+        setDevices([]);
+        setSelectedSerial(null);
       }
     } catch (error) {
       appendLog(`Reboot failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -234,15 +264,16 @@ function App() {
   }
 
   async function handleBootTwrp() {
-    if (!twrpPath || !isClassicFastboot || busy) return;
+    if (!twrpPath || !device.serial || !isClassicFastboot || busy) return;
 
     setBusy(true);
     try {
-      const result = await bootTwrp(twrpPath);
+      const result = await bootTwrp(twrpPath, device.serial);
       logActionResult(result, "Temporary TWRP boot requested.");
 
       if (result.success) {
-        setDevice({ ...emptyDevice, diagnostic: "TWRP is booting. Refresh after recovery starts." });
+        setDevices([]);
+        setSelectedSerial(null);
       }
     } catch (error) {
       appendLog(`TWRP boot failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -252,11 +283,11 @@ function App() {
   }
 
   async function handleFactoryReset() {
-    if (!isClassicFastboot || wipeConfirmation !== "WIPE" || busy) return;
+    if (!device.serial || !isClassicFastboot || wipeConfirmation !== "WIPE" || busy) return;
 
     setBusy(true);
     try {
-      const result = await factoryReset(wipeConfirmation);
+      const result = await factoryReset(wipeConfirmation, device.serial);
       logActionResult(result, "Factory reset completed successfully.");
       if (result.success) setWipeConfirmation("");
     } catch (error) {
@@ -269,6 +300,7 @@ function App() {
   const actionsDisabled =
     busy ||
     !device.connected ||
+    !device.serial ||
     device.mode.includes("Unauthorized") ||
     device.mode.includes("Offline");
 
@@ -280,15 +312,34 @@ function App() {
           <h1>FlashROM</h1>
         </div>
         <button className="button button-secondary" onClick={() => void refresh()} disabled={busy}>
-          {busy ? "Working…" : "Refresh device"}
+          {busy ? "Working…" : "Refresh devices"}
         </button>
       </header>
 
       <section className="device-card" aria-live="polite">
+        {devices.length > 1 && (
+          <label className="device-selector">
+            <span>Connected devices</span>
+            <select
+              value={selectedSerial ?? ""}
+              onChange={(event) => setSelectedSerial(event.target.value || null)}
+              disabled={busy}
+            >
+              <option value="">Select a device serial…</option>
+              {devices.map((item) => (
+                <option key={`${item.tool}-${item.serial}`} value={item.serial ?? ""}>
+                  {item.product ?? "Unknown product"} · {item.serial ?? "no-serial"} · {item.mode}
+                </option>
+              ))}
+            </select>
+            <small>Protected actions remain disabled until one serial is explicitly selected.</small>
+          </label>
+        )}
+
         <div className="device-heading">
           <div>
             <span className={statusClass} aria-hidden="true" />
-            <span className="device-state">{device.connected ? "Device connected" : "No device"}</span>
+            <span className="device-state">{device.connected ? "Device connected" : "No selected device"}</span>
           </div>
           <span className="mode-pill">{device.mode}</span>
         </div>
@@ -496,7 +547,7 @@ function App() {
               {!twrpPath
                 ? "Drop a TWRP .img above first."
                 : !isClassicFastboot
-                  ? "Device must be in classic Fastboot / Bootloader mode."
+                  ? "Selected device must be in classic Fastboot / Bootloader mode."
                   : "Ready to boot the recovery image into memory."}
             </span>
           </div>
@@ -564,7 +615,7 @@ function App() {
         </div>
 
         {!isClassicFastboot && (
-          <p className="operation-note">Switch the device to Bootloader / classic Fastboot before Clean Data is enabled.</p>
+          <p className="operation-note">Select a device in Bootloader / classic Fastboot before Clean Data is enabled.</p>
         )}
       </section>
 
@@ -574,7 +625,7 @@ function App() {
             <p className="eyebrow">Device actions</p>
             <h2>Reboot mode</h2>
           </div>
-          <p>All reboot actions target the detected serial explicitly.</p>
+          <p>Every reboot action targets the selected serial explicitly and participates in the global operation lock.</p>
         </div>
 
         <div className="action-grid">
@@ -600,14 +651,12 @@ function App() {
       <section className="panel upcoming-panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Next milestone</p>
-            <h2>Ordered full-ROM executor</h2>
+            <p className="eyebrow">Next coverage milestone</p>
+            <h2>Payload, super and source-manager restore</h2>
           </div>
         </div>
         <p>
-          Final validation now resolves product compatibility, A/B targets, partition sizes and Fastboot/FastbootD
-          phases. The next layer will define a conservative partition ordering policy, revalidate before every write,
-          execute serially and stop immediately on any device-state change or failed step.
+          Guarded full-ROM execution is now available for fully resolved image-based plans. Remaining ROM coverage work is focused on payload.bin extraction, advanced super/dynamic-partition handling and automated Obtainium/F-Droid profile restore.
         </p>
       </section>
 
