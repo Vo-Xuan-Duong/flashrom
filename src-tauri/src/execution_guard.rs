@@ -18,25 +18,25 @@ const ORDERING_POLICY: &str = "conservative-v1: boot-chain -> system-payload -> 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionGuardStep {
-    index: usize,
-    image: String,
-    image_path: String,
-    partition: String,
-    required_mode: String,
-    policy_class: String,
-    image_size: u64,
-    sha256: String,
+    pub(crate) index: usize,
+    pub(crate) image: String,
+    pub(crate) image_path: String,
+    pub(crate) partition: String,
+    pub(crate) required_mode: String,
+    pub(crate) policy_class: String,
+    pub(crate) image_size: u64,
+    pub(crate) sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionGuardReport {
-    final_plan: FinalFlashPlan,
-    ordering_policy: String,
-    steps: Vec<ExecutionGuardStep>,
-    state_stable_during_hashing: bool,
-    ready_for_executor: bool,
-    diagnostic: String,
+    pub(crate) final_plan: FinalFlashPlan,
+    pub(crate) ordering_policy: String,
+    pub(crate) steps: Vec<ExecutionGuardStep>,
+    pub(crate) state_stable_during_hashing: bool,
+    pub(crate) ready_for_executor: bool,
+    pub(crate) diagnostic: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -83,7 +83,7 @@ fn plan_signature(plan: &FinalFlashPlan) -> PlanSignature {
     }
 }
 
-fn sha256_file(path: &str, expected_size: u64) -> Result<String, String> {
+pub(crate) fn sha256_file(path: &str, expected_size: u64) -> Result<String, String> {
     let metadata = std::fs::metadata(path)
         .map_err(|error| format!("Unable to read image metadata for {path}: {error}"))?;
     if !metadata.is_file() {
