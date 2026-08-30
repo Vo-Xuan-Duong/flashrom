@@ -9,6 +9,7 @@ import "./flash.css";
 import "./final-plan.css";
 import "./guard.css";
 import "./restore.css";
+import "./restore-profile.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
