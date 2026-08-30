@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   backupRestoreApks,
+  loadRestoreProfile,
   restoreLocalApks,
+  saveRestoreProfile,
   scanRestoreProfile,
   verifyRestorePackages,
   type ApkBackupReport,
   type LocalRestoreReport,
   type RestoreApp,
   type RestoreProfile,
+  type RestoreProfileConfig,
   type RestoreStrategy,
   type RestoreVerification,
 } from "../lib/tauri";
@@ -48,6 +51,15 @@ function strategyLabel(strategy: RestoreStrategy) {
   return strategyOptions.find((item) => item.value === strategy)?.label ?? strategy;
 }
 
+function profileCounts(apps: ManagedRestoreApp[]) {
+  return {
+    total: apps.length,
+    googlePlay: apps.filter((app) => app.restoreStrategy === "google_play").length,
+    sourceManager: apps.filter((app) => app.restoreStrategy === "source_manager").length,
+    localApkBackup: apps.filter((app) => app.restoreStrategy === "local_apk_backup").length,
+  };
+}
+
 function RestorePanel({ serial, onLog }: RestorePanelProps) {
   const [profile, setProfile] = useState<RestoreProfile | null>(null);
   const [apps, setApps] = useState<ManagedRestoreApp[]>([]);
@@ -55,6 +67,8 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
   const [filter, setFilter] = useState<RestoreFilter>("all");
   const [backupDirectory, setBackupDirectory] = useState("");
   const [scanBusy, setScanBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [loadBusy, setLoadBusy] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
@@ -63,8 +77,6 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
   const [verification, setVerification] = useState<RestoreVerification | null>(null);
 
   useEffect(() => {
-    setProfile(null);
-    setApps([]);
     setBackupReport(null);
     setRestoreReport(null);
     setVerification(null);
@@ -117,6 +129,23 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
     setVerification(null);
   }
 
+  function currentProfileConfig(): RestoreProfileConfig | null {
+    if (!profile) return null;
+    return {
+      version: 1,
+      deviceProduct: profile.deviceProduct,
+      androidRelease: profile.androidRelease,
+      sdkLevel: profile.sdkLevel,
+      apps: apps.map((app) => ({
+        packageName: app.packageName,
+        installerPackage: app.installerPackage,
+        sourceKind: app.sourceKind,
+        restoreStrategy: app.restoreStrategy,
+        enabled: app.enabled,
+      })),
+    };
+  }
+
   async function scanProfile() {
     if (!serial || scanBusy) return;
     setScanBusy(true);
@@ -129,16 +158,68 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
       setVerification(null);
       onLog(result.diagnostic);
     } catch (error) {
-      setProfile(null);
-      setApps([]);
       onLog(`Restore profile scan failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setScanBusy(false);
     }
   }
 
+  async function saveProfile(quiet = false) {
+    const config = currentProfileConfig();
+    if (!config || !backupDirectory.trim() || saveBusy) return false;
+    setSaveBusy(true);
+    try {
+      const result = await saveRestoreProfile(backupDirectory.trim(), config);
+      if (!quiet) onLog(result.diagnostic);
+      return true;
+    } catch (error) {
+      onLog(`Restore profile save failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  async function loadProfile() {
+    if (!backupDirectory.trim() || loadBusy) return;
+    setLoadBusy(true);
+    try {
+      const result = await loadRestoreProfile(backupDirectory.trim());
+      const loadedApps: ManagedRestoreApp[] = result.apps.map((app) => ({
+        packageName: app.packageName,
+        installerPackage: app.installerPackage,
+        sourceKind: app.sourceKind,
+        restoreStrategy: app.restoreStrategy,
+        enabledByDefault: app.enabled,
+        enabled: app.enabled,
+      }));
+      setProfile({
+        version: result.version,
+        serial: serial ?? "saved-profile",
+        deviceProduct: result.deviceProduct,
+        androidRelease: result.androidRelease,
+        sdkLevel: result.sdkLevel,
+        apps: loadedApps,
+        counts: profileCounts(loadedApps),
+        diagnostic: `Loaded ${loadedApps.length} app(s) from flashrom-restore-profile.json.`,
+      });
+      setApps(loadedApps);
+      setBackupReport(null);
+      setRestoreReport(null);
+      setVerification(null);
+      onLog(`Loaded restore profile with ${loadedApps.length} app(s).`);
+    } catch (error) {
+      onLog(`Restore profile load failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoadBusy(false);
+    }
+  }
+
   async function backupLocalPackages() {
     if (!serial || !backupDirectory.trim() || localBackupPackages.length === 0 || backupBusy) return;
+    const saved = await saveProfile(true);
+    if (!saved) return;
+
     setBackupBusy(true);
     try {
       const result = await backupRestoreApks({
@@ -222,6 +303,36 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
         </button>
       </div>
 
+      <div className="restore-profile-storage">
+        <div>
+          <span>Restore workspace</span>
+          <strong>flashrom-restore-profile.json + local APK folders</strong>
+        </div>
+        <input
+          value={backupDirectory}
+          onChange={(event) => setBackupDirectory(event.target.value)}
+          placeholder="D:\\FlashROM-Backup\\apps"
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={!backupDirectory.trim() || loadBusy}
+          onClick={() => void loadProfile()}
+        >
+          {loadBusy ? "Loading…" : "Load Profile"}
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          disabled={!profile || !backupDirectory.trim() || saveBusy}
+          onClick={() => void saveProfile()}
+        >
+          {saveBusy ? "Saving…" : "Save Profile"}
+        </button>
+      </div>
+
       {profile && (
         <div className="restore-profile-result">
           <div className="restore-summary-grid">
@@ -233,7 +344,7 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
             <div>
               <span>Enabled apps</span>
               <strong>{configuredCounts.total}</strong>
-              <small>{profile.apps.length} scanned</small>
+              <small>{profile.apps.length} in profile</small>
             </div>
             <div>
               <span>Google Play</span>
@@ -315,24 +426,17 @@ function RestorePanel({ serial, onLog }: RestorePanelProps) {
 
           <div className="restore-backup-card">
             <div>
-              <span>Local APK backup directory</span>
+              <span>Local APK backup</span>
               <strong>{localBackupPackages.length} package(s) selected</strong>
               <small>
                 FlashROM pulls base.apk and split APKs only for apps configured as {strategyLabel("local_apk_backup")}.
               </small>
             </div>
-            <input
-              value={backupDirectory}
-              onChange={(event) => setBackupDirectory(event.target.value)}
-              placeholder="D:\\FlashROM-Backup\\apps"
-              spellCheck={false}
-              autoComplete="off"
-            />
             <div className="restore-backup-actions">
               <button
                 type="button"
                 className="button button-secondary"
-                disabled={!serial || !backupDirectory.trim() || localBackupPackages.length === 0 || backupBusy}
+                disabled={!serial || !backupDirectory.trim() || localBackupPackages.length === 0 || backupBusy || saveBusy}
                 onClick={() => void backupLocalPackages()}
               >
                 {backupBusy ? "Backing up…" : "Backup Local APKs"}
