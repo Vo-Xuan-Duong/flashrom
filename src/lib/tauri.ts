@@ -12,6 +12,12 @@ export type DeviceMode =
 
 export type BootLayout = "single" | "ab" | "unknown";
 export type SlotStrategy = "active" | "both";
+export type RestoreStrategy =
+  | "google_play"
+  | "source_manager"
+  | "local_apk_backup"
+  | "manual"
+  | "skip";
 
 export interface DeviceSnapshot {
   connected: boolean;
@@ -147,22 +153,123 @@ export interface FinalFlashPlan {
 
 export interface ExecutionPreviewAction {
   index: number;
-  kind: "preflight" | "mode_transition" | "revalidate_step" | "flash_preview" | "post_write_check" | "finish" | string;
+  kind:
+    | "preflight"
+    | "mode_transition"
+    | "revalidate_step"
+    | "flash_preview"
+    | "post_write_check"
+    | "finish"
+    | string;
   mode: string | null;
   partition: string | null;
   image: string | null;
-  policyClass: "boot_chain" | "system_payload" | "avb_metadata" | string | null;
   commandPreview: string | null;
   description: string;
+  policyClass: string | null;
 }
 
 export interface ExecutionPreview {
   finalPlan: FinalFlashPlan;
   actions: ExecutionPreviewAction[];
-  orderingPolicy: string;
-  orderingPolicyComplete: boolean;
   blockedReason: string | null;
   automaticExecutionEnabled: boolean;
+  orderingPolicy: string;
+  orderingPolicyComplete: boolean;
+  diagnostic: string;
+}
+
+export interface ExecutionGuardStep {
+  index: number;
+  image: string;
+  imagePath: string;
+  partition: string;
+  requiredMode: string;
+  policyClass: string;
+  imageSize: number;
+  sha256: string;
+}
+
+export interface ExecutionGuardReport {
+  finalPlan: FinalFlashPlan;
+  orderingPolicy: string;
+  steps: ExecutionGuardStep[];
+  stateStableDuringHashing: boolean;
+  readyForExecutor: boolean;
+  diagnostic: string;
+}
+
+export interface RestoreApp {
+  packageName: string;
+  installerPackage: string | null;
+  sourceKind: string;
+  restoreStrategy: RestoreStrategy;
+  enabledByDefault: boolean;
+}
+
+export interface RestoreProfileCounts {
+  total: number;
+  googlePlay: number;
+  sourceManager: number;
+  localApkBackup: number;
+}
+
+export interface RestoreProfile {
+  version: number;
+  serial: string;
+  deviceProduct: string | null;
+  androidRelease: string | null;
+  sdkLevel: string | null;
+  apps: RestoreApp[];
+  counts: RestoreProfileCounts;
+  diagnostic: string;
+}
+
+export interface ApkBackupFile {
+  remotePath: string;
+  localPath: string;
+  size: number;
+  sha256: string;
+}
+
+export interface ApkBackupPackageResult {
+  packageName: string;
+  success: boolean;
+  files: ApkBackupFile[];
+  diagnostic: string;
+}
+
+export interface ApkBackupReport {
+  destination: string;
+  packages: ApkBackupPackageResult[];
+  successCount: number;
+  failureCount: number;
+  totalFiles: number;
+  diagnostic: string;
+}
+
+export interface LocalRestorePackageResult {
+  packageName: string;
+  success: boolean;
+  apkCount: number;
+  command: string | null;
+  diagnostic: string;
+}
+
+export interface LocalRestoreReport {
+  sourceDirectory: string;
+  packages: LocalRestorePackageResult[];
+  successCount: number;
+  failureCount: number;
+  diagnostic: string;
+}
+
+export interface RestoreVerification {
+  expectedCount: number;
+  installedCount: number;
+  missingCount: number;
+  installed: string[];
+  missing: string[];
   diagnostic: string;
 }
 
@@ -226,6 +333,44 @@ export function buildExecutionPreview(options: {
   slotStrategy: SlotStrategy;
 }): Promise<ExecutionPreview> {
   return invoke<ExecutionPreview>("build_execution_preview", options);
+}
+
+export function buildExecutionGuard(options: {
+  path: string;
+  serial: string;
+  slotStrategy: SlotStrategy;
+}): Promise<ExecutionGuardReport> {
+  return invoke<ExecutionGuardReport>("build_execution_guard", options);
+}
+
+export function scanRestoreProfile(serial: string): Promise<RestoreProfile> {
+  return invoke<RestoreProfile>("scan_restore_profile", { serial });
+}
+
+export function backupRestoreApks(options: {
+  serial: string;
+  destination: string;
+  packages: string[];
+}): Promise<ApkBackupReport> {
+  return invoke<ApkBackupReport>("backup_restore_apks", options);
+}
+
+export function restoreLocalApks(options: {
+  serial: string;
+  sourceDirectory: string;
+  packages: string[];
+}): Promise<LocalRestoreReport> {
+  return invoke<LocalRestoreReport>("restore_local_apks", options);
+}
+
+export function verifyRestorePackages(
+  serial: string,
+  expectedPackages: string[],
+): Promise<RestoreVerification> {
+  return invoke<RestoreVerification>("verify_restore_packages", {
+    serial,
+    expectedPackages,
+  });
 }
 
 export function adbSideload(serial: string, zipPath: string): Promise<ActionResult> {
