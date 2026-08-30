@@ -423,7 +423,9 @@ fn backup_package(
             };
         }
 
-        let size = fs::metadata(&local_path).map(|value| value.len()).unwrap_or(0);
+        let size = fs::metadata(&local_path)
+            .map(|value| value.len())
+            .unwrap_or(0);
         let sha256 = match sha256_local(&local_path) {
             Ok(value) => value,
             Err(error) => {
@@ -542,7 +544,13 @@ fn package_is_installed(serial: &str, package: &str) -> bool {
         AndroidTool::Adb,
         &["-s", serial, "shell", "pm", "path", package],
     )
-    .map(|output| output.success() && output.stdout.lines().any(|line| line.starts_with("package:")))
+    .map(|output| {
+        output.success()
+            && output
+                .stdout
+                .lines()
+                .any(|line| line.starts_with("package:"))
+    })
     .unwrap_or(false)
 }
 
@@ -718,10 +726,9 @@ mod tests {
 
     #[test]
     fn parses_package_installer_output() {
-        let app = parse_package_with_installer(
-            "package:com.example.app installer=com.android.vending",
-        )
-        .expect("package should parse");
+        let app =
+            parse_package_with_installer("package:com.example.app installer=com.android.vending")
+                .expect("package should parse");
         assert_eq!(app.package_name, "com.example.app");
         assert_eq!(app.source_kind, "google_play");
         assert_eq!(app.restore_strategy, "google_play");
