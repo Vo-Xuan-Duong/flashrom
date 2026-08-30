@@ -1,0 +1,60 @@
+.device-selector {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.device-selector > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.device-selector select {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  border-radius: 0.65rem;
+  background: var(--surface, #16191f);
+  color: inherit;
+}
+
+.device-selector small {
+  opacity: 0.72;
+}
+
+.full-rom-executor,
+.execution-report {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 167, 38, 0.35);
+  border-radius: 0.9rem;
+  background: rgba(255, 167, 38, 0.05);
+}
+
+.executor-option {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.7rem;
+}
+
+.executor-option input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.execution-report > small {
+  overflow-wrap: anywhere;
+  opacity: 0.78;
+}
