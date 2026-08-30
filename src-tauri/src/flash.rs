@@ -182,11 +182,14 @@ pub async fn flash_image(
     .await
     .map_err(|error| format!("Fastboot flash worker failed: {error}"))??;
 
+    let success = result.success();
+    let combined_output = result.combined_output();
+
     Ok(FlashExecutionResult {
         command: result.command,
-        success: result.success(),
+        success,
         status: result.status,
-        output: result.combined_output(),
+        output: combined_output,
         partition,
         image_size,
         partition_size,
