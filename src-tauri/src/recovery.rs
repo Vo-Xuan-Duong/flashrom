@@ -14,11 +14,14 @@ pub struct StreamingActionResult {
 }
 
 fn action_result(output: CommandOutput) -> StreamingActionResult {
+    let success = output.success();
+    let combined_output = output.combined_output();
+
     StreamingActionResult {
         command: output.command,
-        success: output.success(),
+        success,
         status: output.status,
-        output: output.combined_output(),
+        output: combined_output,
     }
 }
 
