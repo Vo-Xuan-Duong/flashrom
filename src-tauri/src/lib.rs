@@ -10,6 +10,7 @@ mod plan;
 mod process;
 mod recovery;
 mod restore;
+mod restore_profile;
 mod rom;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,6 +32,8 @@ pub fn run() {
             restore::backup_restore_apks,
             restore::restore_local_apks,
             restore::verify_restore_packages,
+            restore_profile::save_restore_profile,
+            restore_profile::load_restore_profile,
             recovery::adb_sideload,
             flash::flash_image
         ])
