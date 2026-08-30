@@ -7,6 +7,7 @@ import "./plan.css";
 import "./sideload.css";
 import "./flash.css";
 import "./final-plan.css";
+import "./restore.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
