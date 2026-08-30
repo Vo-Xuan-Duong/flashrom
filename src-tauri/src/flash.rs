@@ -2,7 +2,10 @@ use std::{fs, path::Path};
 
 use serde::Serialize;
 
-use crate::process::{run, run_streaming, AndroidTool, CommandOutput};
+use crate::{
+    operation::OperationManager,
+    process::{run, run_streaming, AndroidTool, CommandOutput},
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +82,7 @@ fn validate_partition_name(partition: &str) -> Result<(), String> {
 #[tauri::command]
 pub async fn flash_image(
     app: tauri::AppHandle,
+    manager: tauri::State<'_, OperationManager>,
     serial: String,
     partition: String,
     image_path: String,
@@ -93,6 +97,10 @@ pub async fn flash_image(
     }
 
     validate_partition_name(&partition)?;
+    let permit = manager
+        .inner()
+        .clone()
+        .acquire("manual-image-flash", &serial)?;
 
     if !fastboot_serial_available(&serial)? {
         return Err(format!(
@@ -146,7 +154,9 @@ pub async fn flash_image(
         parse_yes_no(getvar(&serial, &format!("is-logical:{partition}"))).ok_or_else(|| {
             format!("Logical/physical status for {partition} could not be confirmed.")
         })?;
-    let userspace = parse_yes_no(getvar(&serial, "is-userspace")).unwrap_or(false);
+    let userspace = parse_yes_no(getvar(&serial, "is-userspace")).ok_or_else(|| {
+        "Fastboot did not report is-userspace=yes/no. Flashing is blocked.".to_string()
+    })?;
 
     let required_mode = if logical { "FastbootD" } else { "Fastboot" };
     if logical && !userspace {
@@ -166,6 +176,7 @@ pub async fn flash_image(
     let partition_for_run = partition.clone();
     let image_path_for_run = image_path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
         run_streaming(
             &app,
             &operation_id,
@@ -183,13 +194,12 @@ pub async fn flash_image(
     .map_err(|error| format!("Fastboot flash worker failed: {error}"))??;
 
     let success = result.success();
-    let combined_output = result.combined_output();
-
+    let output = result.combined_output();
     Ok(FlashExecutionResult {
         command: result.command,
         success,
         status: result.status,
-        output: combined_output,
+        output,
         partition,
         image_size,
         partition_size,
