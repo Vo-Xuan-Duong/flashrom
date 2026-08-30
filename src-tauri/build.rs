@@ -8,6 +8,18 @@ const TRANSPARENT_PNG_1X1: &[u8] = &[
     0xae, 0x42, 0x60, 0x82,
 ];
 
+fn ensure_fallback_png() {
+    let icon_path = PathBuf::from("icons/icon.png");
+    if icon_path.is_file() {
+        return;
+    }
+
+    if let Some(parent) = icon_path.parent() {
+        fs::create_dir_all(parent).expect("failed to create fallback icon directory");
+    }
+    fs::write(&icon_path, TRANSPARENT_PNG_1X1).expect("failed to write fallback Tauri PNG icon");
+}
+
 fn write_fallback_icon() -> PathBuf {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set"));
     let icon_path = out_dir.join("flashrom-fallback.ico");
@@ -33,6 +45,8 @@ fn write_fallback_icon() -> PathBuf {
 }
 
 fn main() {
+    ensure_fallback_png();
+
     if PathBuf::from("icons/icon.ico").is_file() {
         tauri_build::build();
         return;
