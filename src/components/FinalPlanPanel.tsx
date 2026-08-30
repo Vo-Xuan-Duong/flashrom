@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RestorePanel from "./RestorePanel";
 import {
   buildExecutionGuard,
   buildExecutionPreview,
+  executeFullRom,
   resolveFinalFlashPlan,
   type ExecutionGuardReport,
   type ExecutionPreview,
   type FinalFlashPlan,
+  type FullRomExecutionReport,
   type SlotStrategy,
 } from "../lib/tauri";
 
@@ -56,15 +58,31 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
   const [plan, setPlan] = useState<FinalFlashPlan | null>(null);
   const [dryRun, setDryRun] = useState<ExecutionPreview | null>(null);
   const [guard, setGuard] = useState<ExecutionGuardReport | null>(null);
+  const [execution, setExecution] = useState<FullRomExecutionReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [guardBusy, setGuardBusy] = useState(false);
+  const [executeBusy, setExecuteBusy] = useState(false);
+  const [cleanDataAfter, setCleanDataAfter] = useState(false);
+  const [rebootAfter, setRebootAfter] = useState(false);
+  const [executionConfirmation, setExecutionConfirmation] = useState("");
+
+  const requiredExecutionConfirmation = useMemo(
+    () => (cleanDataAfter ? "FLASH ROM WIPE" : "FLASH ROM"),
+    [cleanDataAfter],
+  );
 
   useEffect(() => {
     setPlan(null);
     setDryRun(null);
     setGuard(null);
+    setExecution(null);
+    setExecutionConfirmation("");
   }, [romPath, serial, deviceProduct, slotStrategy]);
+
+  useEffect(() => {
+    setExecutionConfirmation("");
+  }, [cleanDataAfter]);
 
   async function resolvePlan() {
     if (!romPath || !serial || busy) return;
@@ -72,6 +90,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
     setBusy(true);
     setDryRun(null);
     setGuard(null);
+    setExecution(null);
     try {
       const result = await resolveFinalFlashPlan({
         path: romPath,
@@ -95,6 +114,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
 
     setDryRunBusy(true);
     setGuard(null);
+    setExecution(null);
     try {
       const result = await buildExecutionPreview({
         path: romPath,
@@ -118,6 +138,8 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
     if (!romPath || !serial || guardBusy) return;
 
     setGuardBusy(true);
+    setExecution(null);
+    setExecutionConfirmation("");
     try {
       const result = await buildExecutionGuard({
         path: romPath,
@@ -135,6 +157,42 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
     }
   }
 
+  async function executeGuardedPlan() {
+    if (
+      !romPath ||
+      !serial ||
+      !guard?.readyForExecutor ||
+      executeBusy ||
+      executionConfirmation !== requiredExecutionConfirmation
+    ) {
+      return;
+    }
+
+    setExecuteBusy(true);
+    setExecution(null);
+    try {
+      const result = await executeFullRom({
+        path: romPath,
+        serial,
+        slotStrategy,
+        confirmation: executionConfirmation,
+        cleanDataAfter,
+        rebootAfter,
+      });
+      setExecution(result);
+      onLog(result.diagnostic);
+      onLog(`Operation journal: ${result.journalPath}`);
+      if (result.success) {
+        setExecutionConfirmation("");
+        setGuard(null);
+      }
+    } catch (error) {
+      onLog(`Full-ROM execution failed to start: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setExecuteBusy(false);
+    }
+  }
+
   return (
     <>
       <section className="panel final-plan-panel">
@@ -144,7 +202,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
             <h2>Final Flash Plan</h2>
           </div>
           <p>
-            Re-reads Fastboot metadata and ROM codename requirements. Full-ROM writes remain disabled.
+            Full-ROM writes are available only after compatibility, ordering, live partition checks and SHA-256 Guard all pass.
           </p>
         </div>
 
@@ -159,7 +217,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
               type="button"
               className={`layout-option ${slotStrategy === "active" ? "layout-option-active" : ""}`}
               onClick={() => setSlotStrategy("active")}
-              disabled={!romPath}
+              disabled={!romPath || executeBusy}
             >
               <strong>Active slot</strong>
               <span>Use current Fastboot slot</span>
@@ -168,7 +226,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
               type="button"
               className={`layout-option ${slotStrategy === "both" ? "layout-option-active" : ""}`}
               onClick={() => setSlotStrategy("both")}
-              disabled={!romPath}
+              disabled={!romPath || executeBusy}
             >
               <strong>Both slots</strong>
               <span>Resolve every A/B target</span>
@@ -178,7 +236,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
           <button
             type="button"
             className="button button-primary"
-            disabled={!romPath || !serial || busy}
+            disabled={!romPath || !serial || busy || executeBusy}
             onClick={() => void resolvePlan()}
           >
             {busy ? "Resolving…" : "Validate & Resolve"}
@@ -186,7 +244,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
         </div>
 
         {!serial && romPath && (
-          <div className="plan-empty">Connect the device through Fastboot/FastbootD before final validation.</div>
+          <div className="plan-empty">Select a Fastboot/FastbootD device before final validation.</div>
         )}
 
         {plan && (
@@ -236,7 +294,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
               </div>
               <div>
                 <span>Mode phases</span>
-                <strong>{plan.requiresModeSwitch ? "Fastboot → FastbootD" : "Single mode"}</strong>
+                <strong>{plan.requiresModeSwitch ? "Fastboot ↔ FastbootD" : "Single mode"}</strong>
               </div>
               <div>
                 <span>Final state</span>
@@ -307,14 +365,13 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
                   : "Full-ROM execution remains blocked."}
               </strong>
               <span>
-                Dry Run previews ordering and mode transitions. Execution Guard additionally hashes every image and
-                verifies that device state stays stable while fingerprints are generated.
+                Dry Run previews ordering and mode transitions. Execution Guard hashes every image and confirms device state remained stable before execution can be enabled.
               </span>
               <div className="final-gate-actions">
                 <button
                   type="button"
                   className="button button-secondary"
-                  disabled={!serial || !romPath || dryRunBusy}
+                  disabled={!serial || !romPath || dryRunBusy || executeBusy}
                   onClick={() => void buildDryRun()}
                 >
                   {dryRunBusy ? "Building dry run…" : "Build Execution Dry Run"}
@@ -322,7 +379,7 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
                 <button
                   type="button"
                   className="button button-secondary"
-                  disabled={!serial || !romPath || guardBusy || !plan.readyForExecution}
+                  disabled={!serial || !romPath || guardBusy || !plan.readyForExecution || executeBusy}
                   onClick={() => void buildGuard()}
                 >
                   {guardBusy ? "Hashing images…" : "Build SHA-256 Guard"}
@@ -393,8 +450,99 @@ function FinalPlanPanel({ romPath, serial, deviceProduct, onLog }: FinalPlanPane
                   ))}
                 </div>
                 <small>
-                  Device state stable during hashing: {guard.stateStableDuringHashing ? "yes" : "no"}. Full-ROM
-                  executor is still not enabled.
+                  Device state stable during hashing: {guard.stateStableDuringHashing ? "yes" : "no"}.
+                </small>
+
+                {guard.readyForExecutor && (
+                  <div className="full-rom-executor">
+                    <div className="danger-copy">
+                      <strong>Guarded Full-ROM Executor</strong>
+                      <span>
+                        Backend rebuilds the guard, rechecks serial/product/slot/mode/partition metadata and SHA-256 immediately before every partition write. Any change stops the sequence.
+                      </span>
+                    </div>
+
+                    <label className="executor-option">
+                      <input
+                        type="checkbox"
+                        checked={cleanDataAfter}
+                        disabled={executeBusy}
+                        onChange={(event) => setCleanDataAfter(event.target.checked)}
+                      />
+                      <span>Clean Data after all partition writes succeed</span>
+                    </label>
+                    <label className="executor-option">
+                      <input
+                        type="checkbox"
+                        checked={rebootAfter}
+                        disabled={executeBusy}
+                        onChange={(event) => setRebootAfter(event.target.checked)}
+                      />
+                      <span>Reboot Android after successful completion</span>
+                    </label>
+
+                    <div className="command-preview command-preview-danger">
+                      <span>Required confirmation</span>
+                      <code>{requiredExecutionConfirmation}</code>
+                    </div>
+
+                    <div className="confirm-row">
+                      <label htmlFor="full-rom-confirmation">
+                        Type <strong>{requiredExecutionConfirmation}</strong> exactly
+                      </label>
+                      <input
+                        id="full-rom-confirmation"
+                        className="confirm-input"
+                        value={executionConfirmation}
+                        disabled={executeBusy}
+                        onChange={(event) => setExecutionConfirmation(event.target.value)}
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={requiredExecutionConfirmation}
+                      />
+                      <button
+                        type="button"
+                        className="button button-danger"
+                        disabled={
+                          executeBusy || executionConfirmation !== requiredExecutionConfirmation
+                        }
+                        onClick={() => void executeGuardedPlan()}
+                      >
+                        {executeBusy ? "Flashing ROM…" : "Execute Full ROM"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {execution && (
+              <div className={`execution-report ${execution.success ? "guard-ready" : "guard-blocked"}`}>
+                <div className="partition-probe-heading">
+                  <div>
+                    <span>Serialized execution result</span>
+                    <strong>Full-ROM Report</strong>
+                  </div>
+                  <span className={execution.success ? "final-ready" : "final-blocked"}>
+                    {execution.success ? "Completed" : "Stopped"}
+                  </span>
+                </div>
+                <p>{execution.diagnostic}</p>
+                <small>Journal: {execution.journalPath}</small>
+                <div className="guard-step-list">
+                  {execution.steps.map((step) => (
+                    <div className="guard-step" key={`${step.index}-${step.partition}`}>
+                      <span>{String(step.index).padStart(2, "0")}</span>
+                      <code>{step.partition}</code>
+                      <small>{step.requiredMode}</small>
+                      <strong className={step.status === "success" ? "final-ready" : step.status === "failed" ? "final-blocked" : ""}>
+                        {step.status}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+                <small>
+                  Clean Data: {execution.cleanDataPerformed ? "done" : "no"} · Reboot requested: {execution.rebootRequested ? "yes" : "no"}
                 </small>
               </div>
             )}
