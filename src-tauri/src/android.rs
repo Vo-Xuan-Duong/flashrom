@@ -233,11 +233,14 @@ pub fn detect_device() -> Result<DeviceSnapshot, String> {
 }
 
 fn action_result(output: CommandOutput) -> ActionResult {
+    let success = output.success();
+    let combined_output = output.combined_output();
+
     ActionResult {
         command: output.command,
-        success: output.success(),
+        success,
         status: output.status,
-        output: output.combined_output(),
+        output: combined_output,
     }
 }
 
