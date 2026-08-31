@@ -25,6 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -33,13 +34,16 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Install frontend dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Type-check frontend
         run: pnpm check
 
       - name: Test Rust backend
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Check Rust backend
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Build installers and draft GitHub release
         uses: tauri-apps/tauri-action@v1
