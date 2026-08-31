@@ -1,15 +1,37 @@
 use std::{
     env, fs,
+    fs::File,
     io::Read,
     path::{Path, PathBuf},
 };
 
 use serde::Serialize;
+use zip::ZipArchive;
 
 use crate::process::{run_executable, run_executable_streaming};
 
 const MAX_PREPARED_IMAGES: usize = 128;
 const MAX_PREPARED_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+const MAX_IDENTITY_METADATA_BYTES: u64 = 1024 * 1024;
+const SAFE_PARTITIONS: &[&str] = &[
+    "boot",
+    "init_boot",
+    "vendor_boot",
+    "vendor_kernel_boot",
+    "dtbo",
+    "vbmeta",
+    "vbmeta_system",
+    "vbmeta_vendor",
+    "recovery",
+    "system",
+    "system_ext",
+    "product",
+    "vendor",
+    "odm",
+    "system_dlkm",
+    "vendor_dlkm",
+    "odm_dlkm",
+];
 
 #[derive(Clone, Copy, Debug)]
 enum SpecialTool {
@@ -56,6 +78,7 @@ pub struct PreparedRomInput {
     kind: String,
     artifacts: Vec<PreparedArtifact>,
     total_bytes: u64,
+    ignored_image_count: usize,
     diagnostic: String,
 }
 
@@ -181,7 +204,7 @@ pub fn inspect_special_tools() -> Result<SpecialToolsStatus, String> {
             "Payload and dynamic-partition preparation tools are available. Sparse super.img additionally requires simg2img."
                 .into()
         } else {
-            "Specialized ROM preparation is partially unavailable. Configure the FLASHROM_PAYLOAD_DUMPER / FLASHROM_LPUNPACK / FLASHROM_SIMG2IMG environment variables or place tools under FlashROM's tools directory."
+            "Specialized ROM preparation is partially unavailable. Configure FLASHROM_PAYLOAD_DUMPER / FLASHROM_LPUNPACK / FLASHROM_SIMG2IMG or place the executables under FlashROM's tools directory."
                 .into()
         },
     })
@@ -225,6 +248,25 @@ fn prepare_empty_workspace(destination: &str) -> Result<PathBuf, String> {
         .map_err(|error| format!("Unable to resolve preparation workspace: {error}"))
 }
 
+fn safe_partition_name(value: &str) -> bool {
+    if SAFE_PARTITIONS.contains(&value) {
+        return true;
+    }
+    for base in SAFE_PARTITIONS {
+        if value == format!("{base}_a") || value == format!("{base}_b") {
+            return true;
+        }
+    }
+    false
+}
+
+fn safe_image_name(path: &Path) -> bool {
+    path.file_stem()
+        .and_then(|value| value.to_str())
+        .map(|value| safe_partition_name(&value.to_ascii_lowercase()))
+        .unwrap_or(false)
+}
+
 fn collect_prepared_images(destination: &Path) -> Result<(Vec<PreparedArtifact>, u64), String> {
     let mut artifacts = Vec::new();
     let mut total_bytes = 0_u64;
@@ -245,7 +287,7 @@ fn collect_prepared_images(destination: &Path) -> Result<(Vec<PreparedArtifact>,
             .and_then(|value| value.to_str())
             .map(|value| value.eq_ignore_ascii_case("img"))
             .unwrap_or(false);
-        if !is_image {
+        if !is_image || !safe_image_name(&path) {
             continue;
         }
 
@@ -274,9 +316,46 @@ fn collect_prepared_images(destination: &Path) -> Result<(Vec<PreparedArtifact>,
 
     artifacts.sort_by(|left, right| left.name.cmp(&right.name));
     if artifacts.is_empty() {
-        return Err("Preparation completed without producing any .img partition files.".into());
+        return Err("Preparation completed without producing any allowlisted .img partition files.".into());
     }
     Ok((artifacts, total_bytes))
+}
+
+fn quarantine_unsupported_images(destination: &Path) -> Result<usize, String> {
+    let entries = fs::read_dir(destination)
+        .map_err(|error| format!("Unable to filter prepared images: {error}"))?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.eq_ignore_ascii_case("img"))
+                    .unwrap_or(false)
+                && !safe_image_name(path)
+        })
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return Ok(0);
+    }
+
+    let ignored = destination.join("_ignored_partitions");
+    fs::create_dir_all(&ignored)
+        .map_err(|error| format!("Unable to create ignored-partition directory: {error}"))?;
+    let count = entries.len();
+    for source in entries {
+        let Some(name) = source.file_name() else {
+            continue;
+        };
+        fs::rename(&source, ignored.join(name)).map_err(|error| {
+            format!(
+                "Unable to quarantine unsupported prepared image {}: {error}",
+                source.display()
+            )
+        })?;
+    }
+    Ok(count)
 }
 
 fn android_sparse_image(path: &Path) -> Result<bool, String> {
@@ -289,8 +368,128 @@ fn android_sparse_image(path: &Path) -> Result<bool, String> {
     Ok(read == 4 && magic == [0x3a, 0xff, 0x26, 0xed])
 }
 
+fn copy_metadata_file(source: &Path, destination: &Path) -> Result<bool, String> {
+    if !source.is_file() {
+        return Ok(false);
+    }
+    let metadata = fs::metadata(source)
+        .map_err(|error| format!("Unable to inspect ROM identity metadata: {error}"))?;
+    if metadata.len() > MAX_IDENTITY_METADATA_BYTES {
+        return Err(format!(
+            "ROM identity metadata {} exceeds the 1 MiB safety limit.",
+            source.display()
+        ));
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Unable to create metadata directory: {error}"))?;
+    }
+    fs::copy(source, destination)
+        .map_err(|error| format!("Unable to preserve ROM identity metadata: {error}"))?;
+    Ok(true)
+}
+
+fn preserve_sibling_identity_metadata(source: &Path, destination: &Path) -> Result<usize, String> {
+    let Some(root) = source.parent() else {
+        return Ok(0);
+    };
+    let candidates = [
+        ("android-info.txt", "android-info.txt"),
+        ("metadata", "metadata"),
+        ("META-INF/com/android/metadata", "META-INF/com/android/metadata"),
+    ];
+    let mut copied = 0;
+    for (relative_source, relative_destination) in candidates {
+        if copy_metadata_file(
+            &root.join(relative_source),
+            &destination.join(relative_destination),
+        )? {
+            copied += 1;
+        }
+    }
+    Ok(copied)
+}
+
+fn preserve_zip_identity_metadata(source: &Path, destination: &Path) -> Result<usize, String> {
+    let file = File::open(source)
+        .map_err(|error| format!("Unable to open OTA ZIP for metadata preservation: {error}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|error| format!("Unable to inspect OTA ZIP metadata: {error}"))?;
+    let mut copied = 0;
+
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Unable to inspect OTA ZIP entry: {error}"))?;
+        if entry.is_dir() || entry.is_symlink() || entry.size() > MAX_IDENTITY_METADATA_BYTES {
+            continue;
+        }
+        let normalized = entry.name().replace('\\', "/").to_ascii_lowercase();
+        let relative = match normalized.as_str() {
+            "android-info.txt" => Some("android-info.txt"),
+            "metadata" => Some("metadata"),
+            "meta-inf/com/android/metadata" => Some("META-INF/com/android/metadata"),
+            _ => None,
+        };
+        let Some(relative) = relative else {
+            continue;
+        };
+        if entry.enclosed_name().is_none() {
+            return Err(format!("Unsafe OTA ZIP metadata path rejected: {}", entry.name()));
+        }
+        let output = destination.join(relative);
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Unable to create metadata directory: {error}"))?;
+        }
+        let mut target = File::create(&output)
+            .map_err(|error| format!("Unable to create preserved metadata file: {error}"))?;
+        std::io::copy(&mut entry, &mut target)
+            .map_err(|error| format!("Unable to preserve OTA ZIP metadata: {error}"))?;
+        copied += 1;
+    }
+    Ok(copied)
+}
+
+fn preserve_identity_metadata(source: &Path, destination: &Path) -> Result<usize, String> {
+    let zip = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false);
+    if zip {
+        preserve_zip_identity_metadata(source, destination)
+    } else {
+        preserve_sibling_identity_metadata(source, destination)
+    }
+}
+
 fn cleanup_failed_workspace(path: &Path) {
     let _ = fs::remove_dir_all(path);
+}
+
+fn payload_partitions(executable: &Path, source: &str) -> Result<Vec<String>, String> {
+    let output = run_executable(executable, &["-l", "-m", source])?;
+    if !output.success() {
+        return Err(format!(
+            "Unable to list payload partitions: {}",
+            output.combined_output()
+        ));
+    }
+    let mut selected = output
+        .stdout
+        .lines()
+        .filter_map(|line| line.trim().split_once(':').map(|(name, _)| name.trim()))
+        .filter(|name| safe_partition_name(name))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    selected.sort();
+    selected.dedup();
+    if selected.is_empty() {
+        Err("Payload contains no partitions covered by FlashROM's beta safety policy.".into())
+    } else {
+        Ok(selected)
+    }
 }
 
 fn prepare_payload_inner(
@@ -308,14 +507,29 @@ fn prepare_payload_inner(
     }
 
     let destination = prepare_empty_workspace(destination)?;
+    let identity_count = preserve_identity_metadata(&source, &destination)?;
     let (_, executable) = resolve_tool(SpecialTool::PayloadDumper);
     let source_text = source.to_string_lossy().to_string();
     let destination_text = destination.to_string_lossy().to_string();
+    let selected = match payload_partitions(&executable, &source_text) {
+        Ok(value) => value,
+        Err(error) => {
+            cleanup_failed_workspace(&destination);
+            return Err(error);
+        }
+    };
+    let selected_text = selected.join(",");
     let output = match run_executable_streaming(
         app,
         "prepare-payload",
         &executable,
-        &["-o", &destination_text, &source_text],
+        &[
+            "-o",
+            &destination_text,
+            "-p",
+            &selected_text,
+            &source_text,
+        ],
     ) {
         Ok(value) => value,
         Err(error) => {
@@ -335,17 +549,19 @@ fn prepare_payload_inner(
         ));
     }
 
+    let ignored_image_count = quarantine_unsupported_images(&destination)?;
     let (artifacts, total_bytes) = collect_prepared_images(&destination)?;
     Ok(PreparedRomInput {
         source: source_text,
         destination: destination_text,
         kind: "payload_images".into(),
         diagnostic: format!(
-            "payload-dumper-go verified and extracted {} partition image(s). Re-select the prepared directory as the ROM input so FlashROM rebuilds compatibility, partition metadata, ordering and SHA-256 Guard from these files.",
+            "payload-dumper-go verified and extracted {} allowlisted partition image(s); {identity_count} ROM identity metadata file(s) were preserved. Re-select the prepared directory so FlashROM rebuilds compatibility, partition metadata, ordering and SHA-256 Guard.",
             artifacts.len()
         ),
         artifacts,
         total_bytes,
+        ignored_image_count,
     })
 }
 
@@ -365,6 +581,7 @@ fn prepare_super_inner(
     }
 
     let destination = prepare_empty_workspace(destination)?;
+    let identity_count = preserve_identity_metadata(&source, &destination)?;
     let source_text = source.to_string_lossy().to_string();
     let destination_text = destination.to_string_lossy().to_string();
     let (_, lpunpack) = resolve_tool(SpecialTool::LpUnpack);
@@ -426,17 +643,19 @@ fn prepare_super_inner(
         ));
     }
 
+    let ignored_image_count = quarantine_unsupported_images(&destination)?;
     let (artifacts, total_bytes) = collect_prepared_images(&destination)?;
     Ok(PreparedRomInput {
         source: source_text,
         destination: destination_text,
         kind: "super_partition_images".into(),
         diagnostic: format!(
-            "super.img was unpacked into {} logical partition image(s). Slot-qualified filenames remain explicit; FlashROM will only select a slot after live device metadata confirms it.",
+            "super.img was unpacked into {} allowlisted logical partition image(s); {ignored_image_count} unsupported image(s) were quarantined and {identity_count} identity metadata file(s) were preserved. Slot-qualified filenames remain explicit and are selected only after live device metadata confirms the slot layout.",
             artifacts.len()
         ),
         artifacts,
         total_bytes,
+        ignored_image_count,
     })
 }
 
@@ -464,13 +683,22 @@ pub async fn prepare_super_input(
 
 #[cfg(test)]
 mod tests {
-    use super::{android_sparse_image, executable_name, SpecialTool};
+    use super::{android_sparse_image, executable_name, safe_partition_name, SpecialTool};
     use std::{fs, time::SystemTime};
 
     #[test]
     fn uses_platform_specific_tool_names() {
         let payload = executable_name(SpecialTool::PayloadDumper);
         assert!(payload.starts_with("payload-dumper-go"));
+    }
+
+    #[test]
+    fn accepts_only_beta_policy_partitions() {
+        assert!(safe_partition_name("system"));
+        assert!(safe_partition_name("system_a"));
+        assert!(safe_partition_name("boot_b"));
+        assert!(!safe_partition_name("modem"));
+        assert!(!safe_partition_name("abl_a"));
     }
 
     #[test]
