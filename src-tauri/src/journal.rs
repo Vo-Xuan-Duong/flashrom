@@ -1,4 +1,7 @@
-use std::{env, fs, path::{Path, PathBuf}};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +36,8 @@ pub struct ExecutionJournalRecord {
     diagnostic: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+    #[serde(default)]
+    recoverable: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -76,6 +81,10 @@ fn validate_journal_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn is_recoverable(record: &ExecutionJournalRecord) -> bool {
+    matches!(record.status.as_str(), "running" | "failed") && Path::new(&record.rom_path).exists()
+}
+
 fn read_journal(path: &Path) -> Result<ExecutionJournalRecord, String> {
     validate_journal_path(path)?;
     let bytes = fs::read(path)
@@ -86,14 +95,13 @@ fn read_journal(path: &Path) -> Result<ExecutionJournalRecord, String> {
     let mut record: ExecutionJournalRecord = serde_json::from_slice(&bytes)
         .map_err(|error| format!("Unable to parse operation journal {}: {error}", path.display()))?;
     record.path = Some(path.to_string_lossy().to_string());
+    record.recoverable = is_recoverable(&record);
     Ok(record)
 }
 
 fn summary(record: &ExecutionJournalRecord, path: &Path) -> JournalSummary {
     let completed_steps = record.steps.iter().filter(|step| step.status == "success").count();
     let failed_steps = record.steps.iter().filter(|step| step.status == "failed").count();
-    let recoverable = matches!(record.status.as_str(), "running" | "failed")
-        && Path::new(&record.rom_path).exists();
     JournalSummary {
         operation_id: record.operation_id.clone(),
         serial: record.serial.clone(),
@@ -105,7 +113,7 @@ fn summary(record: &ExecutionJournalRecord, path: &Path) -> JournalSummary {
         completed_steps,
         failed_steps,
         total_steps: record.steps.len(),
-        recoverable,
+        recoverable: record.recoverable,
         path: path.to_string_lossy().to_string(),
         diagnostic: record.diagnostic.clone(),
     }
@@ -156,6 +164,9 @@ mod tests {
 
     #[test]
     fn journal_directory_is_scoped() {
-        assert!(journal_directory().ends_with("FlashROM\\journals") || journal_directory().ends_with("FlashROM/journals"));
+        assert!(
+            journal_directory().ends_with("FlashROM\\journals")
+                || journal_directory().ends_with("FlashROM/journals")
+        );
     }
 }
