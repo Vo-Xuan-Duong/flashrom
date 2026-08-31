@@ -16,6 +16,7 @@ mod recovery;
 mod restore;
 mod restore_profile;
 mod rom;
+mod zip_inspection;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,6 +30,8 @@ pub fn run() {
             android::factory_reset,
             boot_verify::verify_android_boot,
             rom::inspect_rom,
+            zip_inspection::inspect_rom_zip,
+            zip_inspection::extract_rom_zip_inputs,
             plan::generate_flash_plan,
             partition::inspect_partitions,
             compatibility::inspect_rom_compatibility,
