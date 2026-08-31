@@ -1,10 +1,12 @@
 mod android;
+mod boot_verify;
 mod compatibility;
 mod execution_guard;
 mod execution_preview;
 mod executor;
 mod final_plan;
 mod flash;
+mod journal;
 mod operation;
 mod ordering;
 mod partition;
@@ -25,6 +27,7 @@ pub fn run() {
             android::reboot_device,
             android::boot_twrp,
             android::factory_reset,
+            boot_verify::verify_android_boot,
             rom::inspect_rom,
             plan::generate_flash_plan,
             partition::inspect_partitions,
@@ -33,6 +36,9 @@ pub fn run() {
             execution_preview::build_execution_preview,
             execution_guard::build_execution_guard,
             executor::execute_full_rom,
+            journal::list_execution_journals,
+            journal::inspect_execution_journal,
+            journal::delete_execution_journal,
             operation::get_operation_status,
             restore::scan_restore_profile,
             restore::backup_restore_apks,
