@@ -1,0 +1,96 @@
+.recovery-center-shell {
+  padding-top: 0;
+}
+
+.recovery-center {
+  margin-top: 0;
+}
+
+.recovery-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.recovery-toolbar label,
+.recovery-retry label {
+  display: grid;
+  gap: 6px;
+}
+
+.recovery-toolbar select {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: inherit;
+  padding: 0 12px;
+}
+
+.recovery-result,
+.journal-detail {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.recovery-result code,
+.journal-detail code {
+  overflow-wrap: anywhere;
+}
+
+.journal-section {
+  margin-top: 20px;
+}
+
+.journal-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.journal-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.5fr) 100px 130px 170px;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: inherit;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.journal-row:hover,
+.journal-row-active {
+  border-color: var(--accent);
+}
+
+.journal-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.journal-row code,
+.journal-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recovery-retry {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .recovery-toolbar,
+  .journal-row {
+    grid-template-columns: 1fr;
+  }
+}
