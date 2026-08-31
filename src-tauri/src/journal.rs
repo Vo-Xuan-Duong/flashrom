@@ -87,21 +87,37 @@ fn is_recoverable(record: &ExecutionJournalRecord) -> bool {
 
 fn read_journal(path: &Path) -> Result<ExecutionJournalRecord, String> {
     validate_journal_path(path)?;
-    let bytes = fs::read(path)
-        .map_err(|error| format!("Unable to read operation journal {}: {error}", path.display()))?;
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "Unable to read operation journal {}: {error}",
+            path.display()
+        )
+    })?;
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("Operation journal is unexpectedly large and was rejected.".into());
     }
-    let mut record: ExecutionJournalRecord = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("Unable to parse operation journal {}: {error}", path.display()))?;
+    let mut record: ExecutionJournalRecord = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "Unable to parse operation journal {}: {error}",
+            path.display()
+        )
+    })?;
     record.path = Some(path.to_string_lossy().to_string());
     record.recoverable = is_recoverable(&record);
     Ok(record)
 }
 
 fn summary(record: &ExecutionJournalRecord, path: &Path) -> JournalSummary {
-    let completed_steps = record.steps.iter().filter(|step| step.status == "success").count();
-    let failed_steps = record.steps.iter().filter(|step| step.status == "failed").count();
+    let completed_steps = record
+        .steps
+        .iter()
+        .filter(|step| step.status == "success")
+        .count();
+    let failed_steps = record
+        .steps
+        .iter()
+        .filter(|step| step.status == "failed")
+        .count();
     JournalSummary {
         operation_id: record.operation_id.clone(),
         serial: record.serial.clone(),
@@ -134,7 +150,9 @@ pub fn list_execution_journals() -> Result<Vec<JournalSummary>, String> {
             if path.extension().and_then(|value| value.to_str()) != Some("json") {
                 return None;
             }
-            read_journal(&path).ok().map(|record| summary(&record, &path))
+            read_journal(&path)
+                .ok()
+                .map(|record| summary(&record, &path))
         })
         .collect::<Vec<_>>();
     values.sort_by(|left, right| right.updated_unix_ms.cmp(&left.updated_unix_ms));
@@ -154,8 +172,12 @@ pub fn delete_execution_journal(path: String, confirmation: String) -> Result<()
     }
     let path = PathBuf::from(path);
     validate_journal_path(&path)?;
-    fs::remove_file(&path)
-        .map_err(|error| format!("Unable to delete operation journal {}: {error}", path.display()))
+    fs::remove_file(&path).map_err(|error| {
+        format!(
+            "Unable to delete operation journal {}: {error}",
+            path.display()
+        )
+    })
 }
 
 #[cfg(test)]
