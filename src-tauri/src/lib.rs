@@ -17,6 +17,7 @@ mod recovery;
 mod restore;
 mod restore_profile;
 mod rom;
+mod special_tools;
 mod verified_executor;
 mod zip_inspection;
 
@@ -32,6 +33,9 @@ pub fn run() {
             android::factory_reset,
             boot_verify::verify_android_boot,
             platform_tools::inspect_platform_tools,
+            special_tools::inspect_special_tools,
+            special_tools::prepare_payload_input,
+            special_tools::prepare_super_input,
             rom::inspect_rom,
             zip_inspection::inspect_rom_zip,
             zip_inspection::extract_rom_zip_inputs,
