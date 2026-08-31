@@ -1,7 +1,7 @@
 use std::{
     env,
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
 };
@@ -85,7 +85,7 @@ fn quote_argument(value: &str) -> String {
     }
 }
 
-fn command_text(executable: &PathBuf, args: &[&str]) -> String {
+fn command_text(executable: &Path, args: &[&str]) -> String {
     std::iter::once(executable.to_string_lossy().to_string())
         .chain(args.iter().map(|arg| quote_argument(arg)))
         .collect::<Vec<_>>()
@@ -123,11 +123,9 @@ fn read_stream<R: Read>(
     String::from_utf8_lossy(&collected).into_owned()
 }
 
-pub fn run(tool: AndroidTool, args: &[&str]) -> Result<CommandOutput, String> {
-    let executable = tool_path(tool);
-    let command_text = command_text(&executable, args);
-
-    let output = Command::new(&executable)
+pub fn run_executable(executable: &Path, args: &[&str]) -> Result<CommandOutput, String> {
+    let command_text = command_text(executable, args);
+    let output = Command::new(executable)
         .args(args)
         .output()
         .map_err(|error| format!("Unable to start {}: {error}", executable.display()))?;
@@ -140,15 +138,14 @@ pub fn run(tool: AndroidTool, args: &[&str]) -> Result<CommandOutput, String> {
     })
 }
 
-pub fn run_streaming(
+pub fn run_executable_streaming(
     app: &tauri::AppHandle,
     operation_id: &str,
-    tool: AndroidTool,
+    executable: &Path,
     args: &[&str],
 ) -> Result<CommandOutput, String> {
-    let executable = tool_path(tool);
-    let command_text = command_text(&executable, args);
-    let mut child = Command::new(&executable)
+    let command_text = command_text(executable, args);
+    let mut child = Command::new(executable)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -191,4 +188,17 @@ pub fn run_streaming(
         stdout,
         stderr,
     })
+}
+
+pub fn run(tool: AndroidTool, args: &[&str]) -> Result<CommandOutput, String> {
+    run_executable(&tool_path(tool), args)
+}
+
+pub fn run_streaming(
+    app: &tauri::AppHandle,
+    operation_id: &str,
+    tool: AndroidTool,
+    args: &[&str],
+) -> Result<CommandOutput, String> {
+    run_executable_streaming(app, operation_id, &tool_path(tool), args)
 }
