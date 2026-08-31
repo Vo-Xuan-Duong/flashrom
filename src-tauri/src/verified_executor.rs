@@ -3,9 +3,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::{
-    boot_verify::wait_for_android_boot_inner,
-    executor,
-    operation::OperationManager,
+    boot_verify::wait_for_android_boot_inner, executor, operation::OperationManager,
     partition::getvar,
 };
 
