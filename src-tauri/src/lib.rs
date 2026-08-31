@@ -17,6 +17,7 @@ mod recovery;
 mod restore;
 mod restore_profile;
 mod rom;
+mod source_manager;
 mod special_tools;
 mod verified_executor;
 mod zip_inspection;
@@ -56,6 +57,9 @@ pub fn run() {
             restore::verify_restore_packages,
             restore_profile::save_restore_profile,
             restore_profile::load_restore_profile,
+            source_manager::inspect_source_manager_vault,
+            source_manager::backup_source_manager_config,
+            source_manager::stage_source_manager_config,
             recovery::adb_sideload,
             flash::flash_image
         ])
