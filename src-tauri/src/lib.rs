@@ -11,6 +11,7 @@ mod operation;
 mod ordering;
 mod partition;
 mod plan;
+mod platform_tools;
 mod process;
 mod recovery;
 mod restore;
@@ -29,6 +30,7 @@ pub fn run() {
             android::boot_twrp,
             android::factory_reset,
             boot_verify::verify_android_boot,
+            platform_tools::inspect_platform_tools,
             rom::inspect_rom,
             zip_inspection::inspect_rom_zip,
             zip_inspection::extract_rom_zip_inputs,
