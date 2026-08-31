@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const invoke = vi.fn();
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+}));
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mocks.invoke,
+}));
 
 import {
   bootTwrp,
@@ -14,14 +18,14 @@ import {
 } from "./tauri";
 
 beforeEach(() => {
-  invoke.mockReset();
-  invoke.mockResolvedValue({});
+  mocks.invoke.mockReset();
+  mocks.invoke.mockResolvedValue({});
 });
 
 describe("serial-scoped destructive IPC", () => {
   it("passes the selected serial to reboot actions", async () => {
     await rebootDevice("fastbootd", "ABC123");
-    expect(invoke).toHaveBeenCalledWith("reboot_device", {
+    expect(mocks.invoke).toHaveBeenCalledWith("reboot_device", {
       target: "fastbootd",
       serial: "ABC123",
     });
@@ -29,7 +33,7 @@ describe("serial-scoped destructive IPC", () => {
 
   it("passes image path and serial for temporary TWRP boot", async () => {
     await bootTwrp("D:\\ROM\\twrp.img", "ABC123");
-    expect(invoke).toHaveBeenCalledWith("boot_twrp", {
+    expect(mocks.invoke).toHaveBeenCalledWith("boot_twrp", {
       imagePath: "D:\\ROM\\twrp.img",
       serial: "ABC123",
     });
@@ -37,7 +41,7 @@ describe("serial-scoped destructive IPC", () => {
 
   it("keeps Factory Reset confirmation in the backend request", async () => {
     await factoryReset("WIPE", "ABC123");
-    expect(invoke).toHaveBeenCalledWith("factory_reset", {
+    expect(mocks.invoke).toHaveBeenCalledWith("factory_reset", {
       confirmation: "WIPE",
       serial: "ABC123",
     });
@@ -50,7 +54,7 @@ describe("serial-scoped destructive IPC", () => {
       imagePath: "D:\\ROM\\boot.img",
       confirmation: "FLASH",
     });
-    expect(invoke).toHaveBeenCalledWith("flash_image", {
+    expect(mocks.invoke).toHaveBeenCalledWith("flash_image", {
       serial: "ABC123",
       partition: "boot_b",
       imagePath: "D:\\ROM\\boot.img",
@@ -67,7 +71,7 @@ describe("serial-scoped destructive IPC", () => {
       cleanDataAfter: true,
       rebootAfter: true,
     });
-    expect(invoke).toHaveBeenCalledWith("execute_full_rom", {
+    expect(mocks.invoke).toHaveBeenCalledWith("execute_full_rom", {
       path: "D:\\ROM\\images",
       serial: "ABC123",
       slotStrategy: "active",
@@ -79,6 +83,6 @@ describe("serial-scoped destructive IPC", () => {
 
   it("uses the explicit multi-device listing command", async () => {
     await listDevices();
-    expect(invoke).toHaveBeenCalledWith("list_devices");
+    expect(mocks.invoke).toHaveBeenCalledWith("list_devices");
   });
 });
