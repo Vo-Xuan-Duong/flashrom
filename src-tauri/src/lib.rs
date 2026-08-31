@@ -17,6 +17,7 @@ mod recovery;
 mod restore;
 mod restore_profile;
 mod rom;
+mod verified_executor;
 mod zip_inspection;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,7 +41,7 @@ pub fn run() {
             final_plan::resolve_final_flash_plan,
             execution_preview::build_execution_preview,
             execution_guard::build_execution_guard,
-            executor::execute_full_rom,
+            verified_executor::execute_full_rom,
             journal::list_execution_journals,
             journal::inspect_execution_journal,
             journal::delete_execution_journal,
