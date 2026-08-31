@@ -22,10 +22,19 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "style-src": "'unsafe-inline' 'self'"
+      }
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "category": "Utility",
+    "shortDescription": "Safer Android ADB and Fastboot flashing utility",
+    "longDescription": "FlashROM is a Windows-first Android flashing utility with device validation, ROM planning, guarded partition writes, recovery journaling, ZIP inspection and post-ROM app restore helpers."
   }
 }
