@@ -220,7 +220,10 @@ pub fn extract_rom_zip_inputs(
             .ok_or_else(|| format!("Unsafe ZIP entry path rejected: {}", entry.name()))?;
         let output_path = destination_root.join(&safe_relative);
         if !output_path.starts_with(&destination_root) {
-            return Err(format!("ZIP entry escaped extraction root: {}", entry.name()));
+            return Err(format!(
+                "ZIP entry escaped extraction root: {}",
+                entry.name()
+            ));
         }
         extracted_bytes = extracted_bytes
             .checked_add(entry.size())
@@ -278,7 +281,10 @@ mod tests {
 
     #[test]
     fn detects_payload_zip() {
-        assert_eq!(classify(&[item("payload.bin", "payload")]), "payload_ota_zip");
+        assert_eq!(
+            classify(&[item("payload.bin", "payload")]),
+            "payload_ota_zip"
+        );
     }
 
     #[test]
