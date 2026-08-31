@@ -316,7 +316,9 @@ fn collect_prepared_images(destination: &Path) -> Result<(Vec<PreparedArtifact>,
 
     artifacts.sort_by(|left, right| left.name.cmp(&right.name));
     if artifacts.is_empty() {
-        return Err("Preparation completed without producing any allowlisted .img partition files.".into());
+        return Err(
+            "Preparation completed without producing any allowlisted .img partition files.".into(),
+        );
     }
     Ok((artifacts, total_bytes))
 }
@@ -396,7 +398,10 @@ fn preserve_sibling_identity_metadata(source: &Path, destination: &Path) -> Resu
     let candidates = [
         ("android-info.txt", "android-info.txt"),
         ("metadata", "metadata"),
-        ("META-INF/com/android/metadata", "META-INF/com/android/metadata"),
+        (
+            "META-INF/com/android/metadata",
+            "META-INF/com/android/metadata",
+        ),
     ];
     let mut copied = 0;
     for (relative_source, relative_destination) in candidates {
@@ -435,7 +440,10 @@ fn preserve_zip_identity_metadata(source: &Path, destination: &Path) -> Result<u
             continue;
         };
         if entry.enclosed_name().is_none() {
-            return Err(format!("Unsafe OTA ZIP metadata path rejected: {}", entry.name()));
+            return Err(format!(
+                "Unsafe OTA ZIP metadata path rejected: {}",
+                entry.name()
+            ));
         }
         let output = destination.join(relative);
         if let Some(parent) = output.parent() {
@@ -523,13 +531,7 @@ fn prepare_payload_inner(
         app,
         "prepare-payload",
         &executable,
-        &[
-            "-o",
-            &destination_text,
-            "-p",
-            &selected_text,
-            &source_text,
-        ],
+        &["-o", &destination_text, "-p", &selected_text, &source_text],
     ) {
         Ok(value) => value,
         Err(error) => {
@@ -703,10 +705,8 @@ mod tests {
 
     #[test]
     fn detects_android_sparse_magic() {
-        let path = std::env::temp_dir().join(format!(
-            "flashrom-sparse-test-{:?}.img",
-            SystemTime::now()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("flashrom-sparse-test-{:?}.img", SystemTime::now()));
         fs::write(&path, [0x3a, 0xff, 0x26, 0xed, 0, 0, 0, 0]).expect("write test image");
         assert!(android_sparse_image(&path).expect("inspect sparse image"));
         let _ = fs::remove_file(path);

@@ -505,7 +505,10 @@ mod tests {
         assert_eq!(base_partition_for_image("boot.img"), Some("boot"));
         assert_eq!(base_partition_for_image("system.img"), Some("system"));
         assert_eq!(base_partition_for_image("system_a.img"), Some("system"));
-        assert_eq!(image_partition_hint("vendor_b.img"), Some(("vendor", Some("b"))));
+        assert_eq!(
+            image_partition_hint("vendor_b.img"),
+            Some(("vendor", Some("b")))
+        );
         assert_eq!(base_partition_for_image("unknown.img"), None);
     }
 

@@ -147,7 +147,9 @@ fn safe_extension(path: &Path) -> Option<String> {
     let value = path.extension()?.to_str()?.to_ascii_lowercase();
     (!value.is_empty()
         && value.len() <= 12
-        && value.chars().all(|character| character.is_ascii_alphanumeric()))
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric()))
     .then_some(value)
 }
 
@@ -361,6 +363,9 @@ mod tests {
     #[test]
     fn normalizes_vault_file_names() {
         assert_eq!(stored_file_name(Path::new("backup.JSON")), "config.json");
-        assert_eq!(stored_file_name(Path::new("backup.weird-ext!")), "config.bin");
+        assert_eq!(
+            stored_file_name(Path::new("backup.weird-ext!")),
+            "config.bin"
+        );
     }
 }
