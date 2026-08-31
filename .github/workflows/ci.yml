@@ -22,6 +22,12 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm check
       - run: pnpm build
+      - name: Upload pnpm lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
 
   rust:
     name: Rust
@@ -37,3 +43,9 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Upload Cargo lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lockfile
+          path: src-tauri/Cargo.lock
+          if-no-files-found: error
