@@ -629,7 +629,6 @@ fn execute_inner(
     })
 }
 
-#[tauri::command]
 pub async fn execute_full_rom(
     app: tauri::AppHandle,
     manager: tauri::State<'_, OperationManager>,

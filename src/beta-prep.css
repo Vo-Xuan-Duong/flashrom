@@ -1,0 +1,130 @@
+.beta-prep-shell {
+  display: grid;
+  gap: 20px;
+}
+
+.beta-prep-panel,
+.beta-vault-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.beta-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.beta-tool-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft, rgba(255, 255, 255, 0.03));
+}
+
+.beta-tool-card code,
+.beta-prepared-result code,
+.beta-vault-entry code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.beta-path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.beta-path-grid label,
+.beta-stage-card > label {
+  display: grid;
+  gap: 7px;
+}
+
+.beta-path-grid input,
+.beta-path-grid select,
+.beta-stage-card select {
+  width: 100%;
+}
+
+.beta-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.beta-prepared-result {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.beta-prepared-result > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.beta-artifact-list {
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.beta-artifact-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.beta-log {
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.beta-vault-list {
+  display: grid;
+  gap: 8px;
+}
+
+.beta-vault-entry {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.beta-stage-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+@media (max-width: 720px) {
+  .beta-action-row .button,
+  .beta-path-grid .button {
+    width: 100%;
+  }
+
+  .beta-artifact-list > div {
+    flex-direction: column;
+  }
+}

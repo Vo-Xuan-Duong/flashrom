@@ -1,4 +1,7 @@
-use std::{thread, time::{Duration, Instant}};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
 use serde::Serialize;
 
@@ -124,7 +127,11 @@ pub async fn verify_android_boot(
     expected_product: Option<String>,
     timeout_seconds: Option<u64>,
 ) -> Result<AndroidBootVerification, String> {
-    let timeout = Duration::from_secs(timeout_seconds.unwrap_or(DEFAULT_BOOT_TIMEOUT.as_secs()).clamp(30, 900));
+    let timeout = Duration::from_secs(
+        timeout_seconds
+            .unwrap_or(DEFAULT_BOOT_TIMEOUT.as_secs())
+            .clamp(30, 900),
+    );
     tauri::async_runtime::spawn_blocking(move || {
         wait_for_android_boot_inner(&serial, expected_product.as_deref(), timeout)
     })

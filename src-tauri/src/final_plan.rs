@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
@@ -7,6 +7,27 @@ use crate::{
     partition::{getvar, inspect_partitions_inner, PartitionMetadata, PartitionTargetMetadata},
     rom::{inspect_rom_inner, RomArtifact},
 };
+
+const SUPPORTED_BASE_PARTITIONS: &[&str] = &[
+    "boot",
+    "init_boot",
+    "vendor_boot",
+    "vendor_kernel_boot",
+    "dtbo",
+    "vbmeta",
+    "vbmeta_system",
+    "vbmeta_vendor",
+    "recovery",
+    "super",
+    "system",
+    "system_ext",
+    "product",
+    "vendor",
+    "odm",
+    "system_dlkm",
+    "vendor_dlkm",
+    "odm_dlkm",
+];
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,28 +77,29 @@ fn parse_yes_no(value: Option<String>) -> Option<bool> {
     }
 }
 
-fn base_partition_for_image(name: &str) -> Option<&'static str> {
-    match name.to_lowercase().as_str() {
-        "boot.img" => Some("boot"),
-        "init_boot.img" => Some("init_boot"),
-        "vendor_boot.img" => Some("vendor_boot"),
-        "vendor_kernel_boot.img" => Some("vendor_kernel_boot"),
-        "dtbo.img" => Some("dtbo"),
-        "vbmeta.img" => Some("vbmeta"),
-        "vbmeta_system.img" => Some("vbmeta_system"),
-        "vbmeta_vendor.img" => Some("vbmeta_vendor"),
-        "recovery.img" => Some("recovery"),
-        "super.img" => Some("super"),
-        "system.img" => Some("system"),
-        "system_ext.img" => Some("system_ext"),
-        "product.img" => Some("product"),
-        "vendor.img" => Some("vendor"),
-        "odm.img" => Some("odm"),
-        "system_dlkm.img" => Some("system_dlkm"),
-        "vendor_dlkm.img" => Some("vendor_dlkm"),
-        "odm_dlkm.img" => Some("odm_dlkm"),
-        _ => None,
+fn image_partition_hint(name: &str) -> Option<(&'static str, Option<&'static str>)> {
+    let lower = name.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".img")?;
+
+    for base in SUPPORTED_BASE_PARTITIONS {
+        if stem == *base {
+            return Some((base, None));
+        }
+        if *base == "super" {
+            continue;
+        }
+        if stem == format!("{base}_a") {
+            return Some((base, Some("a")));
+        }
+        if stem == format!("{base}_b") {
+            return Some((base, Some("b")));
+        }
     }
+    None
+}
+
+fn base_partition_for_image(name: &str) -> Option<&'static str> {
+    image_partition_hint(name).map(|(base, _)| base)
 }
 
 fn quote_path(path: &str) -> String {
@@ -114,11 +136,57 @@ fn blocked_step(
     }
 }
 
+fn exact_slot_target(
+    metadata: &PartitionMetadata,
+    slot: &str,
+) -> Result<PartitionTargetMetadata, String> {
+    let expected = format!("{}_{}", metadata.base_partition, slot);
+    metadata
+        .targets
+        .iter()
+        .find(|target| target.name.eq_ignore_ascii_case(&expected))
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "{} does not expose the explicitly requested slot target {expected}.",
+                metadata.base_partition
+            )
+        })
+}
+
 fn selected_targets(
     metadata: &PartitionMetadata,
     slot_strategy: &str,
     active_slot: Option<&str>,
+    explicit_slot: Option<&str>,
 ) -> Result<Vec<PartitionTargetMetadata>, String> {
+    if let Some(slot) = explicit_slot {
+        return match metadata.has_slot {
+            Some(false) => Err(format!(
+                "Image explicitly targets slot {slot}, but partition {} is not slotted on this device.",
+                metadata.base_partition
+            )),
+            Some(true) if slot_strategy == "active" => {
+                let active = active_slot.ok_or_else(|| {
+                    format!(
+                        "{} is A/B, but Fastboot did not report a usable active slot.",
+                        metadata.base_partition
+                    )
+                })?;
+                if active != slot {
+                    Ok(Vec::new())
+                } else {
+                    Ok(vec![exact_slot_target(metadata, slot)?])
+                }
+            }
+            Some(true) => Ok(vec![exact_slot_target(metadata, slot)?]),
+            None => Err(format!(
+                "Slot layout for {} could not be confirmed from Fastboot metadata.",
+                metadata.base_partition
+            )),
+        };
+    }
+
     match metadata.has_slot {
         Some(false) => Ok(metadata.targets.clone()),
         Some(true) if slot_strategy == "both" => Ok(metadata.targets.clone()),
@@ -129,19 +197,7 @@ fn selected_targets(
                     metadata.base_partition
                 )
             })?;
-            let suffix = format!("_{slot}");
-            let target = metadata
-                .targets
-                .iter()
-                .find(|target| target.name.ends_with(&suffix))
-                .cloned()
-                .ok_or_else(|| {
-                    format!(
-                        "{} does not expose a target for active slot {slot}.",
-                        metadata.base_partition
-                    )
-                })?;
-            Ok(vec![target])
+            Ok(vec![exact_slot_target(metadata, slot)?])
         }
         None => Err(format!(
             "Slot layout for {} could not be confirmed from Fastboot metadata.",
@@ -191,11 +247,11 @@ fn resolved_step(
                 target.size_bytes.unwrap_or(0)
             )),
         )
-    } else if artifact.name.eq_ignore_ascii_case("super.img") {
+    } else if base_partition == "super" {
         (
             "manual_only",
             Some(
-                "super.img remains manual-only because it can replace the complete dynamic partition container."
+                "Raw super.img remains manual-only. Use Prepare super.img to unpack its logical partitions and run them through the normal guarded planner instead."
                     .into(),
             ),
         )
@@ -230,7 +286,7 @@ fn artifact_steps(
         return Vec::new();
     }
 
-    let Some(base_partition) = base_partition_for_image(&artifact.name) else {
+    let Some((base_partition, explicit_slot)) = image_partition_hint(&artifact.name) else {
         return vec![blocked_step(
             artifact,
             "unknown",
@@ -250,7 +306,12 @@ fn artifact_steps(
         )];
     };
 
-    match selected_targets(partition_metadata, slot_strategy, active_slot) {
+    match selected_targets(
+        partition_metadata,
+        slot_strategy,
+        active_slot,
+        explicit_slot,
+    ) {
         Ok(targets) => targets
             .iter()
             .map(|target| resolved_step(artifact, base_partition, target, serial))
@@ -263,6 +324,43 @@ fn artifact_steps(
             error,
         )],
     }
+}
+
+fn explicit_slot_coverage_complete(
+    artifacts: &[RomArtifact],
+    metadata: &BTreeMap<String, PartitionMetadata>,
+) -> bool {
+    let mut explicit = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut unsuffixed = BTreeSet::<String>::new();
+
+    for artifact in artifacts {
+        let Some((base, slot)) = image_partition_hint(&artifact.name) else {
+            continue;
+        };
+        match slot {
+            Some(slot) => {
+                explicit
+                    .entry(base.to_string())
+                    .or_default()
+                    .insert(slot.to_string());
+            }
+            None => {
+                unsuffixed.insert(base.to_string());
+            }
+        }
+    }
+
+    explicit.into_iter().all(|(base, slots)| {
+        metadata
+            .get(&base)
+            .and_then(|value| value.has_slot)
+            .map(|has_slot| {
+                !has_slot
+                    || unsuffixed.contains(&base)
+                    || (slots.contains("a") && slots.contains("b"))
+            })
+            .unwrap_or(false)
+    })
 }
 
 pub(crate) fn resolve_final_flash_plan_inner(
@@ -314,6 +412,9 @@ pub(crate) fn resolve_final_flash_plan_inner(
         ));
     }
 
+    let both_slot_coverage = slot_strategy != "both"
+        || explicit_slot_coverage_complete(&inspection.artifacts, &partition_metadata);
+
     let mut warnings = Vec::new();
     if !compatibility.safe_to_auto_flash {
         warnings.push(compatibility.diagnostic.clone());
@@ -335,6 +436,12 @@ pub(crate) fn resolve_final_flash_plan_inner(
                 "Snapshot update status is {snapshot}. Partition writes must wait until snapshot operations finish."
             ));
         }
+    }
+    if !both_slot_coverage {
+        warnings.push(
+            "Both-slots strategy was selected, but at least one slot-qualified image set does not contain both _a and _b variants. Execution remains blocked."
+                .into(),
+        );
     }
     if steps.is_empty() {
         warnings.push("No direct image flash steps were resolved from this ROM input.".into());
@@ -362,6 +469,7 @@ pub(crate) fn resolve_final_flash_plan_inner(
         && bootloader_unlocked == Some(true)
         && userspace.is_some()
         && snapshot_safe
+        && both_slot_coverage
         && !steps.is_empty()
         && steps.iter().all(|step| step.state == "ready");
 
@@ -390,12 +498,17 @@ pub fn resolve_final_flash_plan(
 
 #[cfg(test)]
 mod tests {
-    use super::{base_partition_for_image, normalize_slot};
+    use super::{base_partition_for_image, image_partition_hint, normalize_slot};
 
     #[test]
     fn maps_supported_images() {
         assert_eq!(base_partition_for_image("boot.img"), Some("boot"));
         assert_eq!(base_partition_for_image("system.img"), Some("system"));
+        assert_eq!(base_partition_for_image("system_a.img"), Some("system"));
+        assert_eq!(
+            image_partition_hint("vendor_b.img"),
+            Some(("vendor", Some("b")))
+        );
         assert_eq!(base_partition_for_image("unknown.img"), None);
     }
 

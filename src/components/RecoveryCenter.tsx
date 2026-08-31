@@ -74,6 +74,7 @@ function RecoveryCenter() {
   );
 
   const requiredConfirmation = selectedJournal?.cleanDataRequested ? "FLASH ROM WIPE" : "FLASH ROM";
+  const retrySerialMatches = !selectedJournal || serial === selectedJournal.serial;
 
   async function refresh() {
     const [deviceResult, journalResult] = await Promise.all([
@@ -114,14 +115,22 @@ function RecoveryCenter() {
       setSelectedJournal(result);
       setRetryResult(null);
       setConfirmation("");
-      if (!serial) setSerial(result.serial);
+      setSerial(result.serial);
     } finally {
       setBusy(false);
     }
   }
 
   async function retryFromBeginning() {
-    if (!selectedJournal || !serial || confirmation !== requiredConfirmation || busy) return;
+    if (
+      !selectedJournal ||
+      !serial ||
+      serial !== selectedJournal.serial ||
+      confirmation !== requiredConfirmation ||
+      busy
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       const result = await executeFullRom({
@@ -246,20 +255,30 @@ function RecoveryCenter() {
                 <span>
                   FlashROM will rebuild compatibility, partition metadata, ordering and SHA-256 Guard from the current ROM/device state before writing anything again.
                 </span>
+                {!retrySerialMatches && (
+                  <span className="final-blocked">
+                    Retry is locked because the selected serial differs from the original journal serial {selectedJournal.serial}.
+                  </span>
+                )}
                 <label>
                   Type <strong>{requiredConfirmation}</strong>
                   <input
                     className="confirm-input"
                     value={confirmation}
                     onChange={(event) => setConfirmation(event.target.value)}
-                    disabled={busy}
+                    disabled={busy || !retrySerialMatches}
                     placeholder={requiredConfirmation}
                   />
                 </label>
                 <button
                   type="button"
                   className="button button-danger"
-                  disabled={!serial || confirmation !== requiredConfirmation || busy}
+                  disabled={
+                    !serial ||
+                    !retrySerialMatches ||
+                    confirmation !== requiredConfirmation ||
+                    busy
+                  }
                   onClick={() => void retryFromBeginning()}
                 >
                   Retry Full ROM From Beginning
