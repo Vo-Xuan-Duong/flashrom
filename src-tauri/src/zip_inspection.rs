@@ -1,7 +1,7 @@
 use std::{
     fs::{self, File},
     io,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use serde::Serialize;
