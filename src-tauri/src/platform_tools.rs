@@ -37,11 +37,19 @@ fn resolve(tool: AndroidTool) -> (String, String) {
     let executable = executable_name(tool);
     if let Ok(directory) = env::var("FLASHROM_PLATFORM_TOOLS") {
         let path = PathBuf::from(&directory).join(executable);
-        return ("FLASHROM_PLATFORM_TOOLS".into(), path.to_string_lossy().to_string());
+        return (
+            "FLASHROM_PLATFORM_TOOLS".into(),
+            path.to_string_lossy().to_string(),
+        );
     }
-    let local = PathBuf::from("tools").join("platform-tools").join(executable);
+    let local = PathBuf::from("tools")
+        .join("platform-tools")
+        .join(executable);
     if local.is_file() {
-        return ("bundled/local tools/platform-tools".into(), local.to_string_lossy().to_string());
+        return (
+            "bundled/local tools/platform-tools".into(),
+            local.to_string_lossy().to_string(),
+        );
     }
     ("system PATH".into(), executable.into())
 }
@@ -117,6 +125,9 @@ mod tests {
 
     #[test]
     fn extracts_version_line() {
-        assert_eq!(first_version_line("fastboot version 37.0.0\nInstalled as x"), Some("fastboot version 37.0.0".into()));
+        assert_eq!(
+            first_version_line("fastboot version 37.0.0\nInstalled as x"),
+            Some("fastboot version 37.0.0".into())
+        );
     }
 }
