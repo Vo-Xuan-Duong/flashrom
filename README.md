@@ -1,15 +1,17 @@
 # FlashROM
 
-FlashROM is a Windows-first Android flashing utility built with **Rust + Tauri 2 + React + TypeScript**. It replaces repetitive ADB/Fastboot command-line work with a GUI that keeps the selected device, ROM analysis, validation, command previews, realtime process output and recovery state visible.
+FlashROM is a Windows-first Android flashing utility built with **Rust + Tauri 2 + React + TypeScript**. It replaces repetitive ADB/Fastboot terminal work with a GUI that keeps device identity, ROM analysis, validation, command previews, realtime output and recovery state visible.
 
 > [!WARNING]
 > Flashing Android partitions and wiping userdata can permanently erase data or make a device unbootable. FlashROM reduces avoidable mistakes with backend validation and explicit confirmations, but it cannot make an incompatible or defective ROM safe.
 
-## Current state
+## Beta status
 
-The project is preparing for its first **0.1.0 beta**. CI type-checks/builds the frontend and formats/tests/checks the Rust backend on every push to `main`.
+The software feature set for the first **0.1.0 beta** is complete. Publication is gated by the real-device checklist in [`docs/BETA-VALIDATION.md`](docs/BETA-VALIDATION.md), because CI cannot validate OEM bootloader behavior, USB stability or actual first-boot behavior on physical phones.
 
-### Device and transport
+CI uses pinned `pnpm-lock.yaml` / `src-tauri/Cargo.lock` graphs and requires frontend type-check/tests/build plus Rust format/tests/checks on every push to `main`.
+
+## Device and transport
 
 - Discover devices through ADB and Fastboot.
 - Explicitly select a serial when more than one device is connected.
@@ -19,27 +21,28 @@ The project is preparing for its first **0.1.0 beta**. CI type-checks/builds the
 - Serialize protected operations globally so flash/wipe/reboot/sideload actions cannot overlap.
 - Diagnose the resolved Android Platform Tools source and run `adb version` / `fastboot --version`.
 
-### TWRP and recovery ZIP
+## TWRP and recovery ZIP
 
 - Drag/drop a TWRP `.img`.
 - Temporarily boot recovery using guarded `fastboot boot` in classic Fastboot.
 - ADB Sideload `.zip` packages only when the selected serial is actually reported in `sideload` state.
 - Stream stdout/stderr to the runtime log.
 
-### ROM analysis and planning
+## ROM analysis and planning
 
 - Drag/drop ROM files or folders.
 - Classify image folders, Fastboot ROMs, ZIPs, `payload.bin` and `super.img`.
-- Generate a preliminary Flash Plan from an allowlist of known Android image names.
+- Inspect ZIP central directories without running embedded scripts.
 - Probe live partition metadata: slot support, size, logical/physical state and partition type.
 - Parse trusted ROM product/codename metadata (`android-info.txt`, OTA metadata and related files).
 - Compare ROM identity with `fastboot getvar product`.
 - Resolve active-slot/both-slot targets into a device-validated Final Flash Plan.
+- Resolve explicit prepared names such as `system_a.img` / `system_b.img` only when live slot metadata confirms the target.
 - Apply conservative partition ordering: boot-chain → system payload → AVB metadata.
 - Generate a non-writing Execution Dry Run.
 - Build an immutable SHA-256 Execution Guard.
 
-### Guarded Full-ROM Executor
+## Guarded Full-ROM Executor
 
 Full-ROM execution is enabled only when Final Plan and Execution Guard pass. The Rust backend rebuilds live state instead of trusting an old UI preview.
 
@@ -58,42 +61,66 @@ Before each partition write it revalidates:
 
 Physical partitions are written in classic Fastboot; logical partitions require FastbootD. Mode transitions are serialized and the executor waits for the selected serial to reappear before continuing.
 
-Every operation creates a persistent journal under the FlashROM application data directory. If an operation is interrupted, **Recovery Center never blind-resumes the next partition**. It can inspect the previous journal and retry from the beginning only after the backend rebuilds compatibility, partition metadata, ordering and SHA-256 Guard from the current device/ROM state.
+Every Full-ROM operation creates a persistent journal. Recovery Center never blind-resumes the next partition after interruption. A retry starts from the beginning only after compatibility, partition metadata, ordering and SHA-256 Guard are rebuilt from the current ROM/device state.
 
 Optional post-plan actions:
 
-- Clean Data (`fastboot -w`) only after all partition writes succeed;
-- reboot Android after a successful plan.
+- Clean Data (`fastboot -w`) only after all selected partition writes succeed;
+- reboot Android after successful writes.
 
-### Post-flash boot verification
+If reboot is requested, the operation is not considered fully successful until FlashROM confirms the original serial through ADB, `sys.boot_completed=1`, and consistent `ro.product.device` identity.
 
-Recovery Center can wait for the selected serial to return through ADB and verifies:
+## Specialized ROM preparation
+
+FlashROM keeps raw container conversion separate from partition execution. Preparation never writes a device partition.
+
+### `payload.bin` / OTA ZIP
+
+Beta payload support uses a locally provisioned `payload-dumper-go` executable:
+
+1. list payload partitions first;
+2. intersect the manifest with FlashROM's partition allowlist;
+3. extract only supported partitions;
+4. leave payload SHA-256 verification enabled;
+5. preserve trusted product/codename metadata;
+6. send the prepared image directory back through the normal Final Plan and Execution Guard pipeline.
+
+Incremental/delta OTA packages that require previous/base images stop with an explicit diagnostic in beta; FlashROM does not guess a base build.
+
+### `super.img`
+
+Raw `super.img` remains **non-automatic/manual-only** in the Final Plan. Beta support is instead:
 
 ```text
-sys.boot_completed = 1
-ro.product.device
-ro.build.version.release
-ro.build.fingerprint
+super.img
+  ↓
+[sparse] simg2img
+  ↓
+lpunpack
+  ↓
+allowlisted logical partition images
+  ↓
+slot validation + FastbootD Final Plan
+  ↓
+SHA-256 Guard
 ```
 
-This distinguishes **partition writes completed** from **Android boot verified**.
+Unsupported unpacked images are quarantined under `_ignored_partitions` and never enter the automatic plan. Incomplete explicit `_a/_b` coverage blocks the `both` strategy.
 
-### ROM ZIP Inspector
+External helper provisioning and resolution rules are documented in [`tools/README.md`](tools/README.md). FlashROM does not download helper executables at runtime.
 
-FlashROM can inspect a ZIP central directory without executing embedded scripts. It identifies payload/recovery/fastboot-style packages and surfaces relevant metadata/images.
+## ROM ZIP Inspector
 
-Safe extraction only allows known ROM inputs such as:
+Safe ZIP extraction only allows known ROM inputs such as:
 
 - `payload.bin`;
 - `metadata` / `android-info.txt`;
 - `META-INF/com/android/metadata`;
 - `.img` files.
 
-Extraction rejects symbolic links and unsafe paths using ZIP path confinement, applies entry/file/total-size limits and never executes `flash_all`, updater scripts or other archive programs.
+Extraction rejects symbolic links and unsafe paths, applies entry/file/total-size limits and never executes `flash_all`, updater scripts or archive programs.
 
-`payload.bin` can currently be extracted to a workspace, but **update_engine payload → partition image extraction is intentionally not automatic yet**. `super.img` also remains manual-only. These two high-risk formats stay fail-closed until their dedicated parsers/workflows are validated.
-
-### App Restore Profile
+## App restore
 
 Before a clean flash, FlashROM can scan third-party packages and record their installer/source strategy.
 
@@ -107,7 +134,16 @@ Current restore helpers include:
 - package verification after restore;
 - persistent `flashrom-restore-profile.json` configuration.
 
-Private `/data/data` application data is deliberately not copied directly. Seedvault/Neo Backup integration is a future extension because Android UID/SELinux/Keystore/encryption semantics make raw private-data copying unsafe.
+### Obtainium / F-Droid configuration vault
+
+The Beta Preparation Center can store an **explicitly exported** Obtainium/F-Droid configuration in the restore workspace, pin it by SHA-256 and later stage the verified file to:
+
+```text
+/sdcard/Download/FlashROM/obtainium
+/sdcard/Download/FlashROM/fdroid
+```
+
+The final manager-specific Import/Restore action remains explicit inside Obtainium/F-Droid. FlashROM deliberately does not write app-private `/data/data` files or fabricate an unsupported ADB import API.
 
 ## Safety model
 
@@ -123,8 +159,10 @@ No active snapshot writes
 No image larger than partition
 No overlapping protected operations
 No automatic unknown-image mapping
+No raw automatic super.img write
 No ZIP script execution
 No blind journal resume
+No unverified source-manager config staging
 ```
 
 Backend confirmation phrases are required for high-risk operations:
@@ -134,24 +172,30 @@ Manual image flash     FLASH
 Factory reset          WIPE
 Full ROM               FLASH ROM
 Full ROM + wipe        FLASH ROM WIPE
+Config staging         STAGE CONFIG
 ```
 
-## Android Platform Tools resolution
+## Tool resolution
 
-FlashROM resolves `adb` and `fastboot` in this order:
+### Android Platform Tools
 
-1. `FLASHROM_PLATFORM_TOOLS` environment variable.
-2. `tools/platform-tools/` inside the working directory.
-3. System `PATH`.
+Resolution order:
 
-Example:
+1. `FLASHROM_PLATFORM_TOOLS`
+2. `tools/platform-tools/`
+3. system `PATH`
 
-```powershell
-$env:FLASHROM_PLATFORM_TOOLS="D:\Android\platform-tools"
-pnpm tauri dev
+### Specialized helpers
+
+Supported overrides:
+
+```text
+FLASHROM_PAYLOAD_DUMPER
+FLASHROM_LPUNPACK
+FLASHROM_SIMG2IMG
 ```
 
-The UI includes a diagnostics panel showing the resolved source and tool version output.
+The Beta Preparation Center displays the exact resolved executable path before use. See [`tools/README.md`](tools/README.md).
 
 ## Development
 
@@ -160,14 +204,14 @@ The UI includes a diagnostics panel showing the resolved source and tool version
 - Windows 10/11 for the primary target.
 - Microsoft C++ / Visual Studio Build Tools with Desktop development with C++.
 - Rust stable MSVC toolchain.
-- Node.js 24 (CI) or a compatible Node version meeting `package.json` engines.
+- Node.js 24 in CI or a compatible version meeting `package.json` engines.
 - pnpm 10.15.0.
 - Android SDK Platform Tools.
 
 ```powershell
 rustup default stable-msvc
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
@@ -175,10 +219,11 @@ Validation commands:
 
 ```powershell
 pnpm check
+pnpm test
 pnpm build
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo check --locked --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Architecture
@@ -191,11 +236,12 @@ React / TypeScript UI
 Rust backend
         |
         +-- device discovery / explicit serial selection
-        +-- Platform Tools diagnostics
+        +-- Platform Tools + specialized-tool diagnostics
         +-- global OperationManager
-        +-- ADB/Fastboot process runner + realtime output
+        +-- no-shell process runner + realtime output
         +-- TWRP / recovery sideload / clean data
         +-- ROM analyzer + ZIP inspector
+        +-- payload/super preparation
         +-- product/codename compatibility
         +-- partition probe
         +-- Final Flash Plan
@@ -205,32 +251,43 @@ Rust backend
         +-- persistent execution journals
         +-- Android boot verification
         +-- App Restore Profile
+        +-- Obtainium/F-Droid config vault
         |
         v
-adb / fastboot
+adb / fastboot / explicitly provisioned helper tools
 ```
 
 ## CI and release
 
-`.github/workflows/ci.yml` runs frontend and Rust checks and temporarily uploads generated dependency lockfiles so the repository can pin its build graph.
+`.github/workflows/ci.yml` requires:
 
-`.github/workflows/release.yml` is **manual-only** and builds Windows bundles through Tauri. Releases are created as draft/prerelease first so artifacts can be reviewed before publication.
+```text
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
+pnpm build
+cargo fmt --check
+cargo test --locked
+cargo check --locked
+```
 
-Tauri is configured with a production CSP and Windows NSIS/MSI bundle targets.
+`.github/workflows/release.yml` is manual-only and creates Windows NSIS/MSI draft prereleases. It requires explicit acknowledgement that the hardware validation checklist was completed and that installer signing status is understood before the release job can run.
 
-## Roadmap
+Tauri is configured with a production CSP and Windows bundle targets. Code signing is an external release credential requirement; the repository does not contain signing keys or certificates.
 
-### Completed for the 0.1 beta core
+## 0.1 beta checklist
+
+### Software implementation
 
 - [x] Device discovery and explicit multi-device selection
 - [x] ADB / Recovery / Sideload / Fastboot / FastbootD detection
 - [x] Single-slot and A/B detection
 - [x] TWRP temporary boot
 - [x] Factory Reset confirmation
-- [x] ROM Analyzer
+- [x] ROM Analyzer / ZIP Inspector
 - [x] Partition Probe
 - [x] ROM product/codename validation
-- [x] Final Flash Plan
+- [x] Final Flash Plan including explicit slot-qualified prepared images
 - [x] Conservative partition ordering
 - [x] SHA-256 Execution Guard
 - [x] Global protected-operation lock
@@ -239,30 +296,30 @@ Tauri is configured with a production CSP and Windows NSIS/MSI bundle targets.
 - [x] Realtime process output
 - [x] Persistent operation journals
 - [x] Recovery Center safe retry-from-beginning
-- [x] Android boot verification
-- [x] ZIP central-directory inspection and safe extraction
+- [x] Android first-boot verification
+- [x] Payload full-OTA preparation with extractor verification preserved
+- [x] `super.img` unpack preparation through `simg2img` / `lpunpack`
 - [x] App Restore Profile / local APK backup and restore
-- [x] Platform Tools diagnostics
-- [x] Production CSP and Windows bundle configuration
-- [x] Manual GitHub Release workflow
+- [x] Obtainium/F-Droid configuration vault + verified device staging
+- [x] Platform/specialized tool diagnostics
+- [x] Frontend IPC tests + Rust unit tests
+- [x] Pinned pnpm/Cargo lockfiles and frozen/locked CI
+- [x] Production CSP and Windows NSIS/MSI bundle configuration
+- [x] Manual, gated GitHub Release workflow
+- [x] Beta hardware validation checklist
 
-### Remaining specialized / validation work
+### External release gates
 
-- [ ] Fully parse Android update_engine `payload.bin` and extract partition images with manifest validation
-- [ ] Advanced `super.img` / logical partition metadata tooling
-- [ ] Obtainium/F-Droid configuration import/export automation
-- [ ] Real-device hardware test matrix across single-slot, A/B, dynamic and virtual A/B devices
-- [ ] Frontend automated tests / Tauri integration tests
-- [ ] Commit generated `pnpm-lock.yaml` and `src-tauri/Cargo.lock`, then enforce frozen/locked CI installs
-- [ ] Replace fallback build icon with final product artwork
-- [ ] Optional updater/code-signing after the beta distribution flow is proven
+- [ ] Execute applicable rows in [`docs/BETA-VALIDATION.md`](docs/BETA-VALIDATION.md) on real test hardware.
+- [ ] Replace fallback/temporary artwork if a final product icon is desired before public distribution.
+- [ ] Configure Windows code signing if signed public installers are required.
 
 ## Responsible testing
 
-Do not validate new write paths first on a primary phone. Use test hardware and keep a known recovery method available. New automatic write support for bootloader firmware, `super.img` or unknown partitions should remain disabled until a device-specific validation strategy exists.
+Do not validate new write paths first on a primary phone. Use test hardware and keep a known recovery method available. Bootloader firmware partitions outside FlashROM's explicit beta allowlist remain unsupported and fail closed.
 
 ## License
 
 FlashROM is licensed under the [MIT License](LICENSE).
 
-See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md) for project policies and release notes.
+See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), [`tools/README.md`](tools/README.md) and [`docs/BETA-VALIDATION.md`](docs/BETA-VALIDATION.md) for project policies and release guidance.
