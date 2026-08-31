@@ -2,6 +2,17 @@ name: Release Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      hardware_validation_confirmed:
+        description: Confirm the beta hardware validation checklist has been completed
+        required: true
+        type: boolean
+        default: false
+      unsigned_beta_acknowledged:
+        description: Acknowledge that installers are unsigned unless Tauri signing secrets are configured
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -13,6 +24,7 @@ concurrency:
 jobs:
   release:
     name: Build and publish Windows
+    if: ${{ inputs.hardware_validation_confirmed && inputs.unsigned_beta_acknowledged }}
     runs-on: windows-latest
 
     steps:
@@ -28,6 +40,8 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
@@ -39,6 +53,12 @@ jobs:
       - name: Type-check frontend
         run: pnpm check
 
+      - name: Test frontend IPC contracts
+        run: pnpm test
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
       - name: Test Rust backend
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
@@ -49,13 +69,17 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: FlashROM v__VERSION__
           releaseBody: |
             Windows beta release of FlashROM.
 
-            Review the safety notes in README before flashing a real device.
+            Beta release gates require the hardware validation checklist to be acknowledged before this workflow runs.
+            Installers may be unsigned unless Windows/Tauri signing credentials are configured for the repository.
+            Review README, SECURITY.md and docs/BETA-VALIDATION.md before flashing a real device.
           releaseDraft: true
           prerelease: true
           args: --bundles nsis,msi
