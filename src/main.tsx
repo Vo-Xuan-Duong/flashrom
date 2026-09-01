@@ -1,31 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App";
-import BetaPreparationCenter from "./components/BetaPreparationCenter";
-import PlatformToolsPanel from "./components/PlatformToolsPanel";
-import RecoveryCenter from "./components/RecoveryCenter";
-import RomArchivePanel from "./components/RomArchivePanel";
+import Workspace from "./Workspace";
 import "./styles.css";
-import "./rom.css";
-import "./plan.css";
-import "./sideload.css";
-import "./flash.css";
-import "./final-plan.css";
-import "./guard.css";
-import "./restore.css";
-import "./restore-profile.css";
-import "./executor.css";
-import "./platform-tools.css";
-import "./archive-panel.css";
-import "./recovery-center.css";
-import "./beta-prep.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
-    <BetaPreparationCenter />
-    <PlatformToolsPanel />
-    <RomArchivePanel />
-    <RecoveryCenter />
+    <Workspace />
   </StrictMode>,
 );

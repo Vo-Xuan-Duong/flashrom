@@ -651,12 +651,12 @@ function App() {
       <section className="panel upcoming-panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Next coverage milestone</p>
-            <h2>Payload, super and source-manager restore</h2>
+            <p className="eyebrow">Safety boundary</p>
+            <h2>Supported workflows stay explicitly guarded</h2>
           </div>
         </div>
         <p>
-          Guarded full-ROM execution is now available for fully resolved image-based plans. Remaining ROM coverage work is focused on payload.bin extraction, advanced super/dynamic-partition handling and automated Obtainium/F-Droid profile restore.
+          FlashROM supports prepared payload and super-image workflows plus source-manager configuration staging. It deliberately blocks raw super images, incremental OTA packages that need base images, unknown partitions and private app-data imports until a safe, device-validated path exists.
         </p>
       </section>
 

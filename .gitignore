@@ -19,3 +19,4 @@ Thumbs.db
 # Android Platform Tools are local dependencies; do not commit binaries.
 tools/platform-tools/*
 !tools/platform-tools/README.md
+platform-tools/*
